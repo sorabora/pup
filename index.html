@@ -1,0 +1,3549 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Online Parser</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.43.3/ace.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.43.3/theme-monokai.min.js"></script>
+    <script src="custom-mode.js"></script>
+    <script src="examples.js"></script>
+    <script src="bundle-runtime.js"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: "Nunito", sans-serif;
+      }
+      #editor {
+        width: 100%;
+        height: 280px;
+        border: 1px solid #444;
+      }
+      #output-panel {
+        background: #252526;
+        color: #d4d4d4;
+        padding: 8px;
+        border: 1px solid #444;
+      }
+      #output-log {
+        margin: 0 0 8px;
+        white-space: pre-wrap;
+      }
+      #commandline {
+        width: 100%;
+        box-sizing: border-box;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        border: 1px solid #444;
+        padding: 4px 8px;
+      }
+      #pup-htmlapp-host {
+        margin-bottom: 1rem;
+        padding: 1rem;
+        background: #fff;
+        color: #111;
+        border-radius: 8px;
+        min-height: 2rem;
+      }
+      #pup-htmlapp-host:empty {
+        display: none;
+      }
+    </style>
+  </head>
+  <body>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="container mt-4">
+      <h1>
+        <a href="index.html">Pup Online Transpiler</a>
+      </h1>
+      <div
+        id="public-domain-alert"
+        class="alert alert-warning alert-dismissible fade show mb-3"
+        role="alert"
+      >
+        <h2 class="alert-heading h6 mb-2">Example programs</h2>
+        <p class="mb-2">
+          All example programs included with Pup are dedicated to the public
+          domain under
+          <a
+            href="https://creativecommons.org/publicdomain/zero/1.0/"
+            class="alert-link"
+            >CC0 1.0</a
+          >. You may copy, modify, distribute, and use these examples for any
+          purpose without attribution.
+        </p>
+        <p class="mb-0">
+          The Pup language, runtime, and associated tooling are licensed
+          separately under the MIT License.
+        </p>
+        <button
+          type="button"
+          class="btn-close"
+          data-bs-dismiss="alert"
+          aria-label="Close"
+        ></button>
+      </div>
+      <script>
+        (function () {
+          const publicDomainAlertKey = "pup-public-domain-alert-dismissed";
+          const alertEl = document.getElementById("public-domain-alert");
+          if (!alertEl) return;
+          if (localStorage.getItem(publicDomainAlertKey)) {
+            alertEl.remove();
+            return;
+          }
+          alertEl.addEventListener("closed.bs.alert", () => {
+            localStorage.setItem(publicDomainAlertKey, "1");
+          });
+        })();
+      </script>
+      <div class="row">
+        <div class="col-6">
+          <button
+            onclick="window.open('documentation.html', '_blank')"
+            class="btn btn-secondary"
+          >
+            Language Documentation
+          </button>
+          <div class="btn-group">
+            <button
+              type="button"
+              class="btn btn-primary dropdown-toggle"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+            >
+              Examples
+            </button>
+            <ul
+              class="dropdown-menu dropdown-menu-dark"
+              id="examples-menu"
+              data-bs-theme="dark"
+            ></ul>
+          </div>
+          <button
+            onclick="window.open('modules.html', '_blank')"
+            class="btn btn-secondary"
+          >
+            Modules Documentation
+          </button>
+        </div>
+      </div>
+      <div id="editor"></div>
+      <div class="btn-group ms-2">
+        <button
+          type="button"
+          class="btn btn-outline-secondary dropdown-toggle"
+          data-bs-toggle="dropdown"
+          aria-expanded="false"
+          id="transpile-target-label"
+        >
+          Transpile: Browser
+        </button>
+        <ul
+          class="dropdown-menu dropdown-menu-dark"
+          id="transpile-target-menu"
+          data-bs-theme="dark"
+        >
+          <li>
+            <a class="dropdown-item active" href="#" data-target="browser"
+              >Browser</a
+            >
+          </li>
+          <li>
+            <a class="dropdown-item" href="#" data-target="nodejs">Node.js</a>
+          </li>
+          <li>
+            <a class="dropdown-item" href="#" data-target="html">HTML</a>
+          </li>
+        </ul>
+      </div>
+      <button id="run" class="btn btn-primary">Run</button>
+      <button id="parse" class="btn btn-secondary">Parse</button>
+      <button id="download-js" class="btn btn-success" disabled>
+        Download JS
+      </button>
+    </div>
+    <div class="container mt-4">
+      <div id="result"></div>
+      <h2>Output</h2>
+      <div id="output-panel">
+        <div id="pup-htmlapp-host" class="pup-htmlapp-root"></div>
+        <pre id="output-log"></pre>
+        <textarea
+          rows="1"
+          placeholder="Type your answer here and press Enter"
+          id="commandline"
+        ></textarea>
+      </div>
+    </div>
+    <script>
+      const transpileTargetKey = "pup-transpile-target";
+      let transpileTarget =
+        localStorage.getItem(transpileTargetKey) || "browser";
+      let lastTranspiledJs = null;
+
+      const config = {
+        allowInclude: true,
+        internalAPI: true,
+        nodejs: transpileTarget === "nodejs",
+        core: {
+          variables: true,
+          functions: true,
+          controlFlow: true,
+          switch: true,
+          inlineIf: true,
+          return: true,
+          new: true,
+          eval: true,
+        },
+      };
+
+      function coreEnabled(feature) {
+        return config.core[feature] !== false;
+      }
+
+      function frozenConfigSnapshot() {
+        return Object.freeze({
+          allowInclude: config.allowInclude !== false,
+          internalAPI: config.internalAPI === true,
+          nodejs: nodejsEnabled(),
+          transpileTarget: getTranspileTarget(),
+          core: Object.freeze({ ...config.core }),
+        });
+      }
+
+      function getTranspileTarget() {
+        if (transpileTarget === "nodejs") return "nodejs";
+        if (transpileTarget === "html") return "html";
+        return "browser";
+      }
+
+      function transpileTargetLabel(target) {
+        if (target === "nodejs") return "Node.js";
+        if (target === "html") return "HTML";
+        return "Browser";
+      }
+
+      function setTranspileTarget(target) {
+        transpileTarget =
+          target === "nodejs" || target === "html" ? target : "browser";
+        config.nodejs = transpileTarget === "nodejs";
+        localStorage.setItem(transpileTargetKey, transpileTarget);
+        const label = document.getElementById("transpile-target-label");
+        if (label) {
+          label.textContent =
+            "Transpile: " + transpileTargetLabel(transpileTarget);
+        }
+        document
+          .querySelectorAll("#transpile-target-menu .dropdown-item")
+          .forEach((el) => {
+            el.classList.toggle(
+              "active",
+              el.dataset.target === transpileTarget,
+            );
+          });
+      }
+
+      function nodejsEnabled() {
+        return config.nodejs === true || getTranspileTarget() === "nodejs";
+      }
+
+      function assertModuleRequirements(includes) {
+        const target = getTranspileTarget();
+        for (const name of includes) {
+          const modDef = builtInModules[name];
+          if (modDef?.pupRequiresNode && target === "browser") {
+            throw new Error(
+              "include " + name + " requires Node.js or HTML transpile target",
+            );
+          }
+          if (modDef?.pupRequiresBrowser && target === "nodejs") {
+            throw new Error(
+              "include " + name + " requires Browser or HTML transpile target",
+            );
+          }
+        }
+      }
+
+      (function initTranspileTargetMenu() {
+        setTranspileTarget(getTranspileTarget());
+        const menu = document.getElementById("transpile-target-menu");
+        if (!menu) return;
+        menu.addEventListener("click", (e) => {
+          const item = e.target.closest("[data-target]");
+          if (!item) return;
+          e.preventDefault();
+          setTranspileTarget(item.dataset.target);
+        });
+      })();
+
+      const key = "pup-editor-code";
+      const defaultCode = pupExamples[0]?.code ?? "";
+
+      const editor = ace.edit("editor");
+      editor.setTheme("ace/theme/monokai");
+      editor.session.setMode("ace/mode/pup");
+      editor.session.setTabSize(2);
+      editor.session.setUseSoftTabs(true);
+      editor.setValue(localStorage.getItem(key) ?? defaultCode, -1);
+
+      let typeWarnTimer = null;
+      function refreshTypeAnnotations() {
+        try {
+          const lexer = tokenizePupSource(editor.getValue());
+          const ast = createAst(lexer);
+          applyTypeAnnotations(analyzeTypes(ast, { soft: true }));
+        } catch (e) {
+          editor.session.setAnnotations([]);
+        }
+      }
+
+      editor.session.on("change", () => {
+        localStorage.setItem(key, editor.getValue());
+        clearTimeout(typeWarnTimer);
+        typeWarnTimer = setTimeout(refreshTypeAnnotations, 500);
+      });
+
+      const examplesMenu = document.getElementById("examples-menu");
+      for (const example of pupExamples) {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.className = "dropdown-item";
+        link.href = "#";
+        link.textContent = example.label;
+        link.addEventListener("click", (e) => {
+          e.preventDefault();
+          editor.setValue(example.code, -1);
+          editor.focus();
+          localStorage.setItem(key, example.code);
+        });
+        item.appendChild(link);
+        examplesMenu.appendChild(item);
+      }
+
+      editor.commands.on("afterExec", function (e) {
+        if (e.command.name === "insertstring" && e.args === "(") {
+          const pos = editor.getCursorPosition();
+          editor.session.insert(pos, ")");
+          editor.moveCursorTo(pos.row, pos.column);
+        }
+        if (e.command.name === "insertstring" && e.args === "[") {
+          const pos = editor.getCursorPosition();
+          editor.session.insert(pos, "]");
+          editor.moveCursorTo(pos.row, pos.column);
+        }
+        if (e.command.name === "insertstring" && e.args === '"') {
+          const pos = editor.getCursorPosition();
+          editor.session.insert(pos, '"');
+          editor.moveCursorTo(pos.row, pos.column);
+        }
+        if (e.command.name === "insertstring" && e.args === "'") {
+          const pos = editor.getCursorPosition();
+          editor.session.insert(pos, "'");
+          editor.moveCursorTo(pos.row, pos.column);
+        }
+        if (e.command.name === "insertstring" && e.args === "{") {
+          const pos = editor.getCursorPosition();
+          editor.session.insert(pos, "}");
+          editor.moveCursorTo(pos.row, pos.column);
+        }
+      });
+      let lastRunAst = null;
+      let pupRunGeneration = 0;
+      const PUP_RUN_CANCELLED = Symbol("PUP_RUN_CANCELLED");
+
+      function isRunCancelled(runGen) {
+        return runGen !== pupRunGeneration;
+      }
+
+      function resetPupRuntimeUi() {
+        const log = document.getElementById("output-log");
+        if (log) {
+          log.replaceChildren();
+        }
+        const htmlappHost = document.getElementById("pup-htmlapp-host");
+        if (htmlappHost) htmlappHost.replaceChildren();
+        ioKeysDown.clear();
+        ioKeysPressed.clear();
+      }
+
+      const defaultApi = {
+        wait(seconds) {
+          const runGen = pupRunGeneration;
+          const ms = Number(seconds) * 1000;
+          if (!Number.isFinite(ms) || ms < 0) {
+            throw new Error("wait() expects a non-negative number of seconds");
+          }
+          return new Promise((resolve, reject) => {
+            setTimeout(() => {
+              if (isRunCancelled(runGen)) {
+                reject(PUP_RUN_CANCELLED);
+                return;
+              }
+              resolve();
+            }, ms);
+          });
+        },
+        async eval(fn) {
+          if (typeof fn !== "function") {
+            throw new Error("eval() expects a function");
+          }
+          return await fn();
+        },
+        toString(value) {
+          if (value === null || value === undefined) return String(value);
+          if (typeof value === "object") {
+            if (value.pupEnumInstance && "value" in value) {
+              return String(value.value);
+            }
+            try {
+              return JSON.stringify(value);
+            } catch {
+              return String(value);
+            }
+          }
+          return String(value);
+        },
+        toNumber(value) {
+          if (typeof value === "number") return value;
+          if (typeof value === "boolean") return value ? 1 : 0;
+          if (value === null || value === undefined) return NaN;
+          if (
+            typeof value === "object" &&
+            value.pupEnumInstance &&
+            "value" in value
+          ) {
+            return Number(value.value);
+          }
+          return Number(value);
+        },
+        toBool(value) {
+          if (typeof value === "boolean") return value;
+          if (value === null || value === undefined) return false;
+          if (typeof value === "number") {
+            return value !== 0 && !Number.isNaN(value);
+          }
+          if (typeof value === "string") {
+            const s = value.trim().toLowerCase();
+            if (s === "" || s === "false" || s === "0") return false;
+            return true;
+          }
+          return true;
+        },
+        async restart() {
+          if (!lastRunAst) {
+            throw new Error("restart() is only available while a Pup program is running");
+          }
+          await run(lastRunAst);
+        },
+      };
+      const baseApiNames = new Set(Object.keys(defaultApi));
+      function add(a, b) {
+        if (typeof a === "string" || typeof b === "string") {
+          return String(a) + String(b);
+        }
+        return a + b;
+      }
+      let askResolver = null;
+
+      function formatPrintValue(value) {
+        if (typeof value === "function" && value.pupNative) {
+          return "<native function>";
+        }
+        if (value !== null && typeof value === "object") {
+          try {
+            return JSON.stringify(value, null, 2);
+          } catch {
+            return String(value);
+          }
+        }
+        return String(value);
+      }
+
+      function wrapNativeExports(value) {
+        if (typeof value === "function") {
+          if (value.pupType) return value;
+          const fn = value;
+          const wrapped = function (...args) {
+            return fn.apply(this, args);
+          };
+          wrapped.pupNative = true;
+          return wrapped;
+        }
+        if (value && typeof value === "object") {
+          const out = Array.isArray(value) ? [] : {};
+          for (const key of Reflect.ownKeys(value)) {
+            const desc = Object.getOwnPropertyDescriptor(value, key);
+            if (desc.get || desc.set) {
+              Object.defineProperty(out, key, {
+                get: desc.get ? () => desc.get.call(value) : undefined,
+                set: desc.set ? (v) => desc.set.call(value, v) : undefined,
+                enumerable: desc.enumerable,
+                configurable: desc.configurable,
+              });
+              continue;
+            }
+            out[key] = wrapNativeExports(desc.value);
+          }
+          return out;
+        }
+        return value;
+      }
+
+      function createModuleState(globals) {
+        const state = {};
+        for (const [key, value] of Object.entries(globals)) {
+          state[key] =
+            value !== null && typeof value === "object"
+              ? structuredClone(value)
+              : value;
+        }
+        return state;
+      }
+
+      function defineModule({
+        globals = {},
+        create,
+        onSet,
+        exposeGlobals = [],
+      }) {
+        return { pupModule: true, globals, create, onSet, exposeGlobals };
+      }
+
+      function instantiateModule(modDef) {
+        const state = createModuleState(modDef.globals);
+        const exports = modDef.create(state);
+        for (const key of modDef.exposeGlobals) {
+          if (!(key in modDef.globals)) continue;
+          if (Object.prototype.hasOwnProperty.call(exports, key)) continue;
+          Object.defineProperty(exports, key, {
+            get() {
+              return state[key];
+            },
+            set(value) {
+              state[key] = value;
+              if (modDef.onSet) {
+                modDef.onSet(state, key, value);
+              }
+            },
+            enumerable: true,
+            configurable: true,
+          });
+        }
+        return exports;
+      }
+
+      function resolveModule(mod) {
+        if (mod && mod.pupModule) {
+          return instantiateModule(mod);
+        }
+        return mod;
+      }
+
+      function defineType(fields, defaults) {
+        const pupClass = function (...args) {
+          for (let i = 0; i < fields.length; i++) {
+            this[fields[i]] = args[i] ?? defaults?.[fields[i]] ?? 0;
+          }
+        };
+        pupClass.pupType = true;
+        pupClass.prototype.toString = function () {
+          return fields.map((f) => f + ":" + this[f]).join(", ");
+        };
+        return pupClass;
+      }
+
+      const ioKeysDown = new Set();
+      const ioKeysPressed = new Set();
+
+      const ioKeyAliases = {
+        left: "ArrowLeft",
+        right: "ArrowRight",
+        up: "ArrowUp",
+        down: "ArrowDown",
+        space: " ",
+        enter: "Enter",
+        escape: "Escape",
+        esc: "Escape",
+      };
+
+      function normalizeIoKey(key) {
+        const raw = String(key);
+        const alias = ioKeyAliases[raw.toLowerCase()];
+        return alias ?? raw;
+      }
+
+      function markIoKeyPressed(key, code) {
+        const norm = normalizeIoKey(key);
+        ioKeysPressed.add(key);
+        ioKeysPressed.add(norm);
+        ioKeysPressed.add(String(key).toLowerCase());
+        if (code) ioKeysPressed.add(code);
+      }
+
+      function consumeIoKeyPressed(key) {
+        const k = normalizeIoKey(key);
+        const raw = String(key);
+        const names = [k, raw, normalizeIoKey(raw), raw.toLowerCase()];
+        for (const name of names) {
+          if (ioKeysPressed.has(name)) {
+            for (const n of names) ioKeysPressed.delete(n);
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function initIoInput() {
+        if (initIoInput.ready) return;
+        initIoInput.ready = true;
+        window.addEventListener("keydown", (e) => {
+          const key = e.key;
+          const code = e.code;
+          const norm = normalizeIoKey(key);
+          const wasDown =
+            ioKeysDown.has(key) ||
+            (code && ioKeysDown.has(code)) ||
+            ioKeysDown.has(norm);
+          ioKeysDown.add(key);
+          if (code) ioKeysDown.add(code);
+          if (!wasDown) markIoKeyPressed(key, code);
+        });
+        window.addEventListener("keyup", (e) => {
+          const key = e.key;
+          const code = e.code;
+          const norm = normalizeIoKey(key);
+          ioKeysDown.delete(key);
+          if (code) ioKeysDown.delete(code);
+          ioKeysPressed.delete(key);
+          if (code) ioKeysPressed.delete(code);
+          ioKeysPressed.delete(norm);
+          ioKeysPressed.delete(String(key).toLowerCase());
+        });
+        window.addEventListener("blur", () => {
+          ioKeysDown.clear();
+          ioKeysPressed.clear();
+        });
+      }
+
+      function isKeyDown(key) {
+        initIoInput();
+        const k = normalizeIoKey(key);
+        return ioKeysDown.has(k) || ioKeysDown.has(String(key));
+      }
+
+      function isKeyPressed(key) {
+        initIoInput();
+        return consumeIoKeyPressed(key);
+      }
+
+      function promptInput(...args) {
+        const log = document.getElementById("output-log");
+        const input = document.getElementById("commandline");
+        log.textContent += args.map((a) => String(a)).join(" ") + "\n";
+        input.focus();
+        return new Promise((resolve) => {
+          askResolver = (value) => {
+            askResolver = null;
+            resolve(value);
+          };
+        });
+      }
+
+      function createHttpModule() {
+        const httpMethods = new Set([
+          "GET",
+          "POST",
+          "PUT",
+          "PATCH",
+          "DELETE",
+          "HEAD",
+          "OPTIONS",
+        ]);
+
+        function isHttpMethod(value) {
+          return httpMethods.has(String(value).toUpperCase());
+        }
+
+        function isHttpUrl(value) {
+          const s = String(value);
+          return /^https?:\/\//i.test(s) || s.startsWith("/");
+        }
+
+        function parseHttpHeaders(headers) {
+          if (headers == null) return {};
+          if (typeof headers === "object" && !Array.isArray(headers)) {
+            return headers;
+          }
+          throw new Error(
+            "http headers must be an object, not " + typeof headers,
+          );
+        }
+
+        function parseResponseArgs(a, b, c) {
+          if (b == null && c == null) {
+            return { method: "GET", url: a, headers: {} };
+          }
+          if (b != null && c == null) {
+            if (isHttpMethod(a) && isHttpUrl(b)) {
+              return { method: String(a).toUpperCase(), url: b, headers: {} };
+            }
+            return { method: "GET", url: a, headers: parseHttpHeaders(b) };
+          }
+          if (isHttpMethod(a) && isHttpUrl(b)) {
+            return {
+              method: String(a).toUpperCase(),
+              url: b,
+              headers: parseHttpHeaders(c),
+            };
+          }
+          throw new Error(
+            "http.response: use response(url), response(method, url), or response(method, url, headers)",
+          );
+        }
+
+        function parseHttpResponseBody(text, contentType) {
+          const trimmed = String(text).trim();
+          const type = String(contentType || "").toLowerCase();
+          const looksJson =
+            type.includes("json") ||
+            (trimmed.startsWith("{") && trimmed.endsWith("}")) ||
+            (trimmed.startsWith("[") && trimmed.endsWith("]"));
+          if (!looksJson) return text;
+          try {
+            return JSON.parse(trimmed);
+          } catch {
+            return text;
+          }
+        }
+
+        return {
+          async request(method, url, body = null, headers = {}) {
+            const init = {
+              method: String(method || "GET").toUpperCase(),
+              headers: parseHttpHeaders(headers),
+            };
+            if (
+              body != null &&
+              body !== "" &&
+              init.method !== "GET" &&
+              init.method !== "HEAD"
+            ) {
+              if (typeof body === "string") {
+                init.body = body;
+              } else {
+                init.body = JSON.stringify(body);
+                if (!init.headers["Content-Type"] && !init.headers["content-type"]) {
+                  init.headers["Content-Type"] = "application/json";
+                }
+              }
+            }
+            const res = await fetch(url, init);
+            if (!res.ok) {
+              throw new Error("HTTP " + res.status + " for " + url);
+            }
+            const text = await res.text();
+            const contentType = res.headers.get("content-type") || "";
+            return parseHttpResponseBody(text, contentType);
+          },
+          async response(a, b, c) {
+            const { method, url, headers } = parseResponseArgs(a, b, c);
+            return this.request(method, url, null, headers);
+          },
+        };
+      }
+
+      function createHtmlAppModule() {
+        const hostId = "pup-htmlapp-host";
+
+        function buildExportDocument(html, title) {
+          const safeTitle = String(title ?? "Pup App")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;");
+          return (
+            '<!DOCTYPE html>\n<html lang="en">\n<head>\n' +
+            '  <meta charset="UTF-8" />\n' +
+            '  <meta name="viewport" content="width=device-width, initial-scale=1.0" />\n' +
+            "  <title>" +
+            safeTitle +
+            "</title>\n" +
+            "  <style>body{font-family:system-ui,sans-serif;margin:0;padding:1.5rem;}</style>\n" +
+            "</head>\n<body>\n" +
+            String(html) +
+            "\n</body>\n</html>"
+          );
+        }
+
+        function resolveHost(selector) {
+          if (selector == null || selector === "") {
+            return document.getElementById(hostId);
+          }
+          if (typeof selector === "string") {
+            return document.querySelector(selector);
+          }
+          return selector;
+        }
+
+        function applyHtmlAttribute(el, property, value) {
+          const name = String(property);
+          if (value == null || value === false) {
+            el.removeAttribute(name);
+            if (name === "class") el.className = "";
+            if (name === "value" && "value" in el) el.value = "";
+            if (name === "checked" && "checked" in el) el.checked = false;
+            if (name === "disabled" && "disabled" in el) el.disabled = false;
+            return;
+          }
+          const val = String(value);
+          if (name === "class") {
+            el.className = val;
+            return;
+          }
+          if (name === "value" && "value" in el) {
+            el.value = val;
+            return;
+          }
+          if (name === "checked" && "checked" in el) {
+            el.checked = val !== "" && val !== "false" && val !== "0";
+            return;
+          }
+          if (name === "disabled" && "disabled" in el) {
+            el.disabled = val !== "" && val !== "false" && val !== "0";
+            return;
+          }
+          el.setAttribute(name, val);
+        }
+
+        function readHtmlAttribute(el, property) {
+          const name = String(property);
+          if (name === "class") return el.className;
+          if (name === "value" && "value" in el) return el.value;
+          if (name === "checked" && "checked" in el) return el.checked;
+          if (name === "disabled" && "disabled" in el) return el.disabled;
+          return el.getAttribute(name);
+        }
+
+        return {
+          pupRequiresBrowser: true,
+          render(html) {
+            const host = resolveHost(null);
+            if (!host) {
+              throw new Error("htmlapp.render: host #" + hostId + " not found");
+            }
+            host.innerHTML = String(html);
+            return host;
+          },
+          setHtmlAttribute(selector, property, value) {
+            const el = resolveHost(selector);
+            if (!el) {
+              throw new Error("htmlapp.setHtmlAttribute: element not found");
+            }
+            applyHtmlAttribute(el, property, value);
+            return el;
+          },
+          setProperty(selector, property, value) {
+            return this.setHtmlAttribute(selector, property, value);
+          },
+          getHtmlAttribute(selector, property) {
+            const el = resolveHost(selector);
+            if (!el) {
+              throw new Error("htmlapp.getHtmlAttribute: element not found");
+            }
+            return readHtmlAttribute(el, property);
+          },
+          getProperty(selector, property) {
+            return this.getHtmlAttribute(selector, property);
+          },
+          mount(html, selector) {
+            const host = resolveHost(selector);
+            if (!host) {
+              throw new Error("htmlapp.mount: host not found");
+            }
+            host.innerHTML = String(html);
+            return host;
+          },
+          clear(selector) {
+            const host = resolveHost(selector);
+            if (host) host.innerHTML = "";
+          },
+          setTitle(title) {
+            document.title = String(title);
+          },
+          export(html, title) {
+            return buildExportDocument(html, title);
+          },
+          download(html, filename, title) {
+            const name = String(filename ?? "app.html");
+            const doc = buildExportDocument(html, title);
+            const blob = new Blob([doc], {
+              type: "text/html;charset=utf-8",
+            });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement("a");
+            link.href = url;
+            link.download = name;
+            link.click();
+            URL.revokeObjectURL(url);
+          },
+        };
+      }
+
+      const builtInModules = {
+        console: {
+          print(...args) {
+            const log = document.getElementById("output-log");
+            log.textContent +=
+              args.map((a) => formatPrintValue(a)).join(" ") + "\n";
+          },
+          ask(...args) {
+            return promptInput(...args).then((value) => {
+              document.getElementById("output-log").textContent += value + "\n";
+              return value;
+            });
+          },
+          dialog(...args) {
+            return promptInput(...args);
+          },
+        },
+        utils: {
+          time: {
+            currentYear() {
+              return new Date().getFullYear();
+            },
+            currentMonth() {
+              return new Date().getMonth() + 1;
+            },
+            currentDay() {
+              return new Date().getDate();
+            },
+            currentHour() {
+              return new Date().getHours();
+            },
+            currentMinute() {
+              return new Date().getMinutes();
+            },
+            currentSecond() {
+              return new Date().getSeconds();
+            },
+            currentMillisecond() {
+              return new Date().getMilliseconds();
+            },
+          },
+        },
+        vectors: null,
+        io: {
+          isKeyDown(key) {
+            return isKeyDown(key);
+          },
+          isKeyPressed(key) {
+            return isKeyPressed(key);
+          },
+        },
+        game: defineModule({
+          globals: {
+            canvas: null,
+            ctx: null,
+            fillColor: "#000000",
+          },
+          onSet(state, key, value) {
+            if (key === "fillColor" && state.ctx) {
+              state.ctx.fillStyle = value;
+            }
+          },
+          create(state) {
+            function applyFillColor(color) {
+              state.fillColor = color;
+              if (state.ctx) {
+                state.ctx.fillStyle = color;
+              }
+            }
+
+            return {
+              ...vectorTypes,
+              center: "center",
+              left: "left",
+              right: "right",
+              game: {
+                createWindow(width, height) {
+                  const log = document.getElementById("output-log");
+                  const canvas = document.createElement("canvas");
+                  canvas.width = width;
+                  canvas.height = height;
+                  canvas.tabIndex = 0;
+                  canvas.style.outline = "none";
+                  canvas.addEventListener("click", () => canvas.focus());
+                  state.ctx = canvas.getContext("2d");
+                  state.canvas = canvas;
+                  state.ctx.fillStyle = state.fillColor;
+                  log.appendChild(canvas);
+                  initIoInput();
+                  canvas.focus();
+                },
+                background(color) {
+                  if (!state.ctx) {
+                    throw new Error("No window created");
+                  }
+                  applyFillColor(color);
+                  state.ctx.fillRect(
+                    0,
+                    0,
+                    state.canvas.width,
+                    state.canvas.height,
+                  );
+                },
+                text(text, x, y, fontSize = 16, posmode = "left") {
+                  if (!state.ctx) {
+                    throw new Error("No window created");
+                  }
+                  state.ctx.save();
+                  state.ctx.fillStyle = state.fillColor;
+                  state.ctx.font = `${fontSize}px Arial`;
+                  const mode = String(posmode).toLowerCase();
+                  if (mode === "center") {
+                    state.ctx.textAlign = "center";
+                  } else if (mode === "right") {
+                    state.ctx.textAlign = "right";
+                  } else {
+                    state.ctx.textAlign = "left";
+                  }
+                  state.ctx.textBaseline = "alphabetic";
+                  state.ctx.fillText(String(text), x, y);
+                  state.ctx.restore();
+                },
+                checkCollision(
+                  x1,
+                  y1,
+                  width1,
+                  height1,
+                  x2,
+                  y2,
+                  width2,
+                  height2,
+                ) {
+                  return (
+                    x1 < x2 + width2 &&
+                    x1 + width1 > x2 &&
+                    y1 < y2 + height2 &&
+                    y1 + height1 > y2
+                  );
+                },
+                rect(x, y, width, height) {
+                  if (!state.ctx) {
+                    throw new Error("No window created");
+                  }
+                  state.ctx.fillStyle = state.fillColor;
+                  state.ctx.fillRect(x, y, width, height);
+                },
+                circle(x, y, radius) {
+                  if (!state.ctx) {
+                    throw new Error("No window created");
+                  }
+                  state.ctx.fillStyle = state.fillColor;
+                  state.ctx.beginPath();
+                  state.ctx.arc(x, y, radius, 0, Math.PI * 2);
+                  state.ctx.fill();
+                },
+                clear() {
+                  if (!state.ctx) {
+                    throw new Error("No window created");
+                  }
+                  state.ctx.clearRect(
+                    0,
+                    0,
+                    state.canvas.width,
+                    state.canvas.height,
+                  );
+                },
+                fillColor(color) {
+                  applyFillColor(color);
+                },
+                mainLoop(fn) {
+                  const runGen = pupRunGeneration;
+                  async function frame() {
+                    if (isRunCancelled(runGen)) return;
+                    try {
+                      await fn();
+                    } catch (e) {
+                      if (e === PUP_RUN_CANCELLED) return;
+                      throw e;
+                    }
+                    if (isRunCancelled(runGen)) return;
+                    requestAnimationFrame(frame);
+                  }
+                  requestAnimationFrame(frame);
+                },
+              },
+            };
+          },
+        }),
+        http: createHttpModule(),
+        jsonplus: {
+          length(json) {
+            return json.length;
+          },
+          // in development!!
+        },
+        math: {
+          random(min, max) {
+            return Math.random() * (max - min) + min;
+          },
+          round(value) {
+            return Math.round(value);
+          },
+          floor(value) {
+            return Math.floor(value);
+          },
+          ceil(value) {
+            return Math.ceil(value);
+          },
+          // in development!!
+        },
+        enums: {
+          Enum: (() => {
+            function Enum(enumType, value) {
+              if (!enumType?.pupEnum) {
+                throw new Error(
+                  "Enum() first argument must be an enum from createEnum",
+                );
+              }
+              return new enumType(value);
+            }
+            Enum.pupType = true;
+            return Enum;
+          })(),
+          createEnum(options) {
+            if (!Array.isArray(options)) {
+              throw new Error(
+                "createEnum() expects an array of allowed values",
+              );
+            }
+            if (options.length === 0) {
+              throw new Error("createEnum() needs at least one option");
+            }
+            const allowed = options.map((option) => String(option));
+            const allowedSet = new Set(allowed);
+            function enumConstructor(value) {
+              const normalized = String(value);
+              if (!allowedSet.has(normalized)) {
+                throw new Error(
+                  "invalid enum value: " +
+                    normalized +
+                    " (allowed: " +
+                    allowed.join(", ") +
+                    ")",
+                );
+              }
+              this.value = normalized;
+              this.pupEnumInstance = true;
+            }
+            enumConstructor.pupEnum = true;
+            enumConstructor.allowedValues = allowed;
+            enumConstructor.prototype.toString = function () {
+              return this.value;
+            };
+            return enumConstructor;
+          },
+        },
+        htmlapp: createHtmlAppModule(),
+        ssr: {
+          pupRequiresNode: true,
+          render(html, filePath) {
+            const out = String(html);
+            if (typeof process !== "undefined" && process.stdout) {
+              if (filePath) {
+                const fs = require("fs");
+                fs.writeFileSync(filePath, out, "utf8");
+                process.stdout.write("Wrote " + filePath + "\n");
+              } else {
+                process.stdout.write(out);
+              }
+              return;
+            }
+            const log = document.getElementById("output-log");
+            if (log) {
+              log.textContent += out;
+              if (!out.endsWith("\n")) log.textContent += "\n";
+            }
+          },
+        },
+      };
+
+      const vectorTypes = {
+        Vector2: defineType(["x", "y"]),
+        Vector3: defineType(["x", "y", "z"]),
+      };
+      builtInModules.vectors = vectorTypes;
+
+      document
+        .getElementById("commandline")
+        .addEventListener("keydown", (e) => {
+          if (e.key === "Enter" && askResolver) {
+            e.preventDefault();
+            const value = e.target.value;
+            e.target.value = "";
+            askResolver(value);
+          }
+        });
+
+      const moduleNames = new Set(Object.keys(builtInModules));
+      const allModuleExports = new Set();
+      for (const mod of Object.values(builtInModules)) {
+        if (mod.pupModule) {
+          for (const k of mod.exposeGlobals || []) {
+            allModuleExports.add(k);
+          }
+        }
+        for (const k of Object.keys(resolveModule(mod))) {
+          allModuleExports.add(k);
+        }
+      }
+
+      let activeApiNames = new Set();
+      let declaredNames = new Set();
+      let currentAst = null;
+      const typeOwners = {};
+
+      for (const [modName, mod] of Object.entries(builtInModules)) {
+        const exp = resolveModule(mod);
+        for (const k of Object.keys(exp)) {
+          if (typeof exp[k] === "function" && exp[k].pupType) {
+            typeOwners[k] = modName;
+          }
+        }
+      }
+
+      const functionReturnTypes = new Map([
+        ["toString", "string"],
+        ["toNumber", "double"],
+        ["toBool", "boolean"],
+        ["math.random", "double"],
+        ["math.round", "double"],
+        ["math.floor", "double"],
+        ["math.ceil", "double"],
+        ["http.response", "object"],
+        ["http.request", "object"],
+        ["jsonplus.length", "int"],
+        ["enums.createEnum", "object"],
+      ]);
+
+      function callLookupKey(callee) {
+        if (callee?.type === "identifier") return callee.value;
+        if (
+          callee?.type === "dot" &&
+          callee.a?.type === "identifier" &&
+          callee.b?.type === "identifier"
+        ) {
+          return callee.a.value + "." + callee.b.value;
+        }
+        return null;
+      }
+
+      const exportToModule = {};
+      for (const [modName, mod] of Object.entries(builtInModules)) {
+        if (!mod) continue;
+        const exp = resolveModule(mod);
+        for (const k of Object.keys(exp)) {
+          if (k === modName) continue;
+          exportToModule[k] = modName;
+        }
+      }
+
+      function mergeModuleExports(api, modName) {
+        const exp = resolveModule(builtInModules[modName]);
+        const namespace = {};
+        for (const k of Object.keys(exp)) {
+          const v = exp[k];
+          if (typeof v === "function" && v.pupType) {
+            api[k] = v;
+            namespace[k] = v;
+          } else {
+            const wrapped = wrapNativeExports(v);
+            api[k] = wrapped;
+            namespace[k] = wrapped;
+          }
+        }
+        if (!Object.prototype.hasOwnProperty.call(exp, modName)) {
+          api[modName] = wrapNativeExports(namespace);
+        }
+      }
+
+      function attachReadOnlyInternals(api) {
+        const internals = Object.create(null);
+        Object.defineProperties(internals, {
+          declaredNames: {
+            enumerable: true,
+            get() {
+              return Object.freeze([...declaredNames].sort());
+            },
+          },
+          activeApiNames: {
+            enumerable: true,
+            get() {
+              return Object.freeze([...activeApiNames].sort());
+            },
+          },
+          includes: {
+            enumerable: true,
+            get() {
+              const names = [];
+              if (currentAst) collectIncludes(currentAst.stmts, names);
+              return Object.freeze(names);
+            },
+          },
+          config: {
+            enumerable: true,
+            get() {
+              return frozenConfigSnapshot();
+            },
+          },
+        });
+        Object.freeze(internals);
+        if (config.internalAPI) {
+          Object.defineProperty(api, "__internals", {
+            value: internals,
+            enumerable: true,
+            writable: false,
+            configurable: false,
+          });
+        }
+      }
+
+      function buildApi(ast, extra) {
+        const api = wrapNativeExports({ ...defaultApi, ...extra });
+        if (config.allowInclude !== false) {
+          const includes = [];
+          collectIncludes(ast.stmts, includes);
+          const loaded = new Set();
+          for (const name of includes) {
+            if (loaded.has(name)) continue;
+            loaded.add(name);
+            mergeModuleExports(api, name);
+          }
+        }
+        attachReadOnlyInternals(api);
+        return api;
+      }
+
+      function isTypeInScope(name, ast) {
+        if (activeApiNames.has(name)) return true;
+        const includes = [];
+        collectIncludes(ast.stmts, includes);
+        for (const modName of includes) {
+          const t = resolveModule(builtInModules[modName])?.[name];
+          if (typeof t === "function" && t.pupType) return true;
+        }
+        return false;
+      }
+
+      function setActiveApi(ast) {
+        currentAst = ast;
+        const api = buildApi(ast);
+        activeApiNames = new Set(Object.keys(api));
+      }
+
+      function createApi(extra) {
+        return { ...defaultApi, ...extra };
+      }
+
+      function transpiledDownloadFilename() {
+        const target = getTranspileTarget();
+        if (target === "nodejs") return "main.js";
+        if (target === "html") return "index.html";
+        return "pup.js";
+      }
+
+      function setDownloadReady(ready) {
+        const btn = document.getElementById("download-js");
+        if (btn) btn.disabled = !ready;
+      }
+
+      function downloadTranspiledJs() {
+        if (!lastTranspiledJs) {
+          alert("Nothing to download yet. Click Parse or Run first.");
+          return;
+        }
+        const filename = transpiledDownloadFilename();
+        const blob = new Blob([lastTranspiledJs], {
+          type: "text/javascript;charset=utf-8",
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = filename;
+        link.click();
+        URL.revokeObjectURL(url);
+      }
+
+      document.getElementById("parse").addEventListener("click", () => {
+        runPipeline({ execute: false });
+      });
+
+      document.getElementById("run").addEventListener("click", () => {
+        runPipeline({ execute: true });
+      });
+
+      document
+        .getElementById("download-js")
+        .addEventListener("click", downloadTranspiledJs);
+
+      document.getElementById("result").addEventListener("click", (e) => {
+        if (
+          e.target.id === "download-transpiled-inline" ||
+          e.target.closest("#download-transpiled-inline")
+        ) {
+          e.preventDefault();
+          downloadTranspiledJs();
+        }
+      });
+
+      function formatPupError(err) {
+        const message = err && err.message ? err.message : String(err);
+        if (err && err.line != null) {
+          return message + " (line " + err.line + ")";
+        }
+        return message;
+      }
+
+      function escapeHtml(text) {
+        return String(text)
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+      }
+
+      function lexHtmlTemplate(source, startIndex) {
+        let i = startIndex;
+        let depth = 0;
+        let started = false;
+
+        function readTag() {
+          if (source[i] !== "<") return false;
+          const close = source[i + 1] === "/";
+          const tagStart = i + (close ? 2 : 1);
+          const nameMatch = source
+            .slice(tagStart)
+            .match(/^([a-zA-Z][a-zA-Z0-9-]*)/);
+          if (!nameMatch) return false;
+          let j = tagStart + nameMatch[1].length;
+          while (j < source.length && source[j] !== ">") j++;
+          if (j >= source.length) return false;
+          const selfClose = source[j - 1] === "/";
+          j++;
+          i = j;
+          if (!selfClose) {
+            if (close) depth--;
+            else depth++;
+          }
+          started = true;
+          return true;
+        }
+
+        while (i < source.length) {
+          if (/[ \t]/.test(source[i])) {
+            i++;
+            continue;
+          }
+          if (source[i] === "\n" || source[i] === "\r") {
+            if (depth === 0 && started) {
+              let j = i;
+              while (j < source.length && /[\r\n]/.test(source[j])) j++;
+              if (j >= source.length) break;
+              if (source[j] === "<") {
+                i = j;
+                continue;
+              }
+              break;
+            }
+            while (i < source.length && /[\r\n]/.test(source[i])) i++;
+            continue;
+          }
+          if (source[i] === "<") {
+            if (!readTag()) break;
+            continue;
+          }
+          while (
+            i < source.length &&
+            source[i] !== "<" &&
+            source[i] !== "\n" &&
+            source[i] !== "\r"
+          ) {
+            i++;
+          }
+          if ((source[i] === "\n" || source[i] === "\r") && depth > 0) {
+            while (i < source.length && /[\r\n]/.test(source[i])) i++;
+          }
+        }
+        return source.slice(startIndex, i);
+      }
+
+      function collectUsedIncludes(ast) {
+        const declared = [];
+        collectIncludes(ast.stmts, declared);
+        if (!declared.length) return [];
+
+        const used = new Set();
+
+        function markModule(name) {
+          if (declared.includes(name)) used.add(name);
+        }
+
+        function visitExpr(node) {
+          if (!node) return;
+          if (node.type === "identifier") {
+            if (moduleNames.has(node.value)) markModule(node.value);
+            else if (exportToModule[node.value]) {
+              markModule(exportToModule[node.value]);
+            }
+          }
+          if (node.type === "dot") {
+            if (
+              node.a?.type === "identifier" &&
+              moduleNames.has(node.a.value)
+            ) {
+              markModule(node.a.value);
+            }
+            visitExpr(node.a);
+            return;
+          }
+          if (node.type === "new" && typeOwners[node.name]) {
+            markModule(typeOwners[node.name]);
+          }
+          if (node.type === "anonfn") {
+            visitStmts(node.body?.stmts);
+            return;
+          }
+          if (node.type === "call") {
+            visitExpr(node.callee);
+            for (const arg of node.args || []) visitExpr(arg);
+            return;
+          }
+          if (node.type === "op" || node.type === "cond") {
+            visitExpr(node.a);
+            visitExpr(node.b);
+          }
+          if (node.type === "index") {
+            visitExpr(node.a);
+            visitExpr(node.b);
+          }
+          if (node.type === "object") {
+            for (const prop of node.props || []) visitExpr(prop.value);
+          }
+          if (node.type === "array") {
+            for (const item of node.items || []) visitExpr(item);
+          }
+          if (node.type === "group") visitExpr(node.value);
+          if (node.type === "inc") visitExpr(node.a);
+          if (node.type === "unary") visitExpr(node.value);
+          if (node.type === "ifexpr") {
+            visitExpr(node.whenTrue);
+            visitExpr(node.whenFalse);
+          }
+        }
+
+        function visitCond(node) {
+          if (!node) return;
+          if (node.type === "cond") {
+            visitCond(node.a);
+            if (node.b != null) visitCond(node.b);
+            return;
+          }
+          visitExpr(node);
+        }
+
+        function visitStmts(stmts) {
+          for (const s of stmts || []) {
+            if (!s) continue;
+            if (s.type === "expr" && s.value) visitExpr(s.value);
+            if (s.type === "local" && s.value) visitExpr(s.value);
+            if (s.type === "return" && s.value) visitExpr(s.value);
+            if (s.type === "set") {
+              visitExpr(s.target);
+              visitExpr(s.value);
+            }
+            if (s.type === "reassign" || s.type === "assign") {
+              visitExpr(s.value);
+            }
+            if (s.type === "function") visitStmts(s.body?.stmts);
+            if (s.type === "while") {
+              visitCond(s.cond);
+              visitStmts(s.body?.stmts);
+            }
+            if (s.type === "for") {
+              visitExpr(s.start);
+              visitExpr(s.end);
+              if (s.step) visitExpr(s.step);
+              visitStmts(s.body?.stmts);
+            }
+            if (s.type === "if") {
+              visitCond(s.cond);
+              visitStmts(s.body?.stmts);
+              for (const branch of s.elif || []) {
+                visitCond(branch.cond);
+                visitStmts(branch.body?.stmts);
+              }
+              visitStmts(s.elseBody?.stmts);
+            }
+            if (s.type === "switch") {
+              visitExpr(s.value);
+              for (const branch of s.cases || []) {
+                visitExpr(branch.value);
+                visitStmts(branch.body?.stmts);
+              }
+              visitStmts(s.defaultBody?.stmts);
+            }
+          }
+        }
+
+        visitStmts(ast.stmts);
+        if (used.has("game")) used.add("vectors");
+        return declared.filter((name) => used.has(name));
+      }
+
+      function getBundleModules(ast) {
+        const used = collectUsedIncludes(ast);
+        const bundle = new Set(used);
+        if (bundle.has("game")) bundle.add("vectors");
+        return [...bundle];
+      }
+
+      function emitBundledOutput(ast, transpiledBody) {
+        if (!globalThis.PupBundle) {
+          throw new Error("bundle-runtime.js failed to load");
+        }
+        const modules = getBundleModules(ast);
+        const target = getTranspileTarget();
+        if (target === "html") {
+          return {
+            js: PupBundle.emitHtmlDocument(modules, transpiledBody),
+            modules,
+          };
+        }
+        return {
+          js: PupBundle.emitProgram(modules, transpiledBody, target),
+          modules,
+        };
+      }
+
+      function tokenizePupSource(code) {
+        const lexer = [];
+        let pos = 0;
+
+        function lineAt(index) {
+          let line = 1;
+          for (let i = 0; i < index; i++) {
+            if (code[i] === "\n") line++;
+          }
+          return line;
+        }
+
+        function lexPush(type, value, start = pos) {
+          lexer.push({ type, value, line: lineAt(start) });
+        }
+
+        while (pos < code.length) {
+          const char = code[pos];
+
+          if (/\s/.test(char)) {
+            pos++;
+            continue;
+          }
+
+          if (code.slice(pos, pos + 2) === "//") {
+            pos += 2;
+            while (
+              pos < code.length &&
+              code[pos] !== "\n" &&
+              code[pos] !== "\r"
+            ) {
+              pos++;
+            }
+            continue;
+          }
+
+          if (code.slice(pos, pos + 2) === "/*") {
+            pos += 2;
+            while (pos < code.length) {
+              if (code.slice(pos, pos + 2) === "*/") {
+                pos += 2;
+                break;
+              }
+              pos++;
+            }
+            continue;
+          }
+
+          if (code.slice(pos, pos + 7) === "include") {
+            lexPush("include", "include");
+            pos += 7;
+          } else if (code.slice(pos, pos + 8) === "function") {
+            lexPush("function", "function");
+            pos += 8;
+          } else if (code.slice(pos, pos + 6) === "return") {
+            lexPush("return", "return");
+            pos += 6;
+          } else if (code.slice(pos, pos + 7) === "default") {
+            lexPush("default", "default");
+            pos += 7;
+          } else if (code.slice(pos, pos + 6) === "switch") {
+            lexPush("switch", "switch");
+            pos += 6;
+          } else if (code.slice(pos, pos + 5) === "local") {
+            lexPush("local", "local");
+            pos += 5;
+          } else if (code.slice(pos, pos + 4) === "case") {
+            lexPush("case", "case");
+            pos += 4;
+          } else if (code.slice(pos, pos + 4) === "else") {
+            lexPush("else", "else");
+            pos += 4;
+          } else if (code.slice(pos, pos + 3) === "end") {
+            lexPush("end", "end");
+            pos += 3;
+          } else if (code.slice(pos, pos + 3) === "and") {
+            lexPush("and", "and");
+            pos += 3;
+          } else if (code.slice(pos, pos + 5) === "while") {
+            lexPush("while", "while");
+            pos += 5;
+          } else if (code.slice(pos, pos + 3) === "for") {
+            lexPush("for", "for");
+            pos += 3;
+          } else if (code.slice(pos, pos + 3) === "new") {
+            lexPush("new", "new");
+            pos += 3;
+          } else if (lexWordAt(code, pos, "boolean")) {
+            lexPush("type", "boolean");
+            pos += 7;
+          } else if (lexWordAt(code, pos, "bigint")) {
+            lexPush("type", "bigint");
+            pos += 6;
+          } else if (lexWordAt(code, pos, "double")) {
+            lexPush("type", "double");
+            pos += 6;
+          } else if (lexWordAt(code, pos, "string")) {
+            lexPush("type", "string");
+            pos += 6;
+          } else if (lexWordAt(code, pos, "object")) {
+            lexPush("type", "object");
+            pos += 6;
+          } else if (lexWordAt(code, pos, "array")) {
+            lexPush("type", "array");
+            pos += 5;
+          } else if (lexWordAt(code, pos, "false")) {
+            lexPush("boolean", "false");
+            pos += 5;
+          } else if (lexWordAt(code, pos, "true")) {
+            lexPush("boolean", "true");
+            pos += 4;
+          } else if (lexWordAt(code, pos, "int")) {
+            lexPush("type", "int");
+            pos += 3;
+          } else if (lexWordAt(code, pos, "any")) {
+            lexPush("type", "any");
+            pos += 3;
+          } else if (code.slice(pos, pos + 2) === "or") {
+            lexPush("or", "or");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "if") {
+            lexPush("condition", "if");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "&&") {
+            lexPush("andop", "&&");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "||") {
+            lexPush("orop", "||");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "==") {
+            lexPush("eq", "==");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "!=") {
+            lexPush("ne", "!=");
+            pos += 2;
+          } else if (code[pos] === "!") {
+            lexPush("not", "!");
+            pos++;
+          } else if (code.slice(pos, pos + 2) === "<=") {
+            lexPush("lte", "<=");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === ">=") {
+            lexPush("gte", ">=");
+            pos += 2;
+          } else if (
+            code[pos] === "<" &&
+            /^(\/)?[a-zA-Z]/.test(code.slice(pos + 1))
+          ) {
+            const start = pos;
+            const value = lexHtmlTemplate(code, start);
+            pos = start + value.length;
+            lexPush("html", value, start);
+          } else if (code[pos] === "<") {
+            lexPush("lt", "<");
+            pos++;
+          } else if (code[pos] === ".") {
+            lexPush("dot", ".");
+            pos++;
+          } else if (code[pos] === ">") {
+            lexPush("gt", ">");
+            pos++;
+          } else if (/[a-zA-Z_]/.test(char)) {
+            const start = pos;
+            while (pos < code.length && /[a-zA-Z0-9_]/.test(code[pos])) {
+              pos++;
+            }
+            const value = code.slice(start, pos);
+            lexPush("identifier", value, start);
+          } else if (code[pos] === ":") {
+            lexPush("colon", ":");
+            pos++;
+          } else if (code[pos] === "?") {
+            lexPush("question", "?");
+            pos++;
+          } else if (code.slice(pos, pos + 2) === "+=") {
+            lexPush("pluseq", "+=");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "-=") {
+            lexPush("minuseq", "-=");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "*=") {
+            lexPush("multeq", "*=");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "/=") {
+            lexPush("diveq", "/=");
+            pos += 2;
+          } else if (code.slice(pos, pos + 2) === "++") {
+            lexPush("inc", "++");
+            pos += 2;
+          } else if (code[pos] === "=") {
+            lexPush("equals", "=");
+            pos++;
+          } else if (code[pos] === ",") {
+            lexPush("comma", ",");
+            pos++;
+          } else if (code[pos] === "+") {
+            lexPush("plus", "+");
+            pos++;
+          } else if (code[pos] === "-") {
+            lexPush("minus", "-");
+            pos++;
+          } else if (code[pos] === "*") {
+            lexPush("multiply", "*");
+            pos++;
+          } else if (code[pos] === "/") {
+            lexPush("divide", "/");
+            pos++;
+          } else if (code[pos] === "(") {
+            lexPush("leftp", "(");
+            pos++;
+          } else if (code[pos] === ")") {
+            lexPush("rightp", ")");
+            pos++;
+          } else if (code[pos] === "[") {
+            lexPush("leftbracket", "[");
+            pos++;
+          } else if (code[pos] === "]") {
+            lexPush("rightbracket", "]");
+            pos++;
+          } else if (code[pos] === "{") {
+            lexPush("leftbrace", "{");
+            pos++;
+          } else if (code[pos] === "}") {
+            lexPush("rightbrace", "}");
+            pos++;
+          } else if (/[0-9]/.test(char)) {
+            const start = pos;
+            while (pos < code.length && /[0-9]/.test(code[pos])) {
+              pos++;
+            }
+            if (code[pos] === ".") {
+              pos++;
+              while (pos < code.length && /[0-9]/.test(code[pos])) {
+                pos++;
+              }
+            }
+            const value = code.slice(start, pos);
+            lexPush("number", value, start);
+          } else if (code[pos] === '"') {
+            pos++;
+            const start = pos;
+            while (pos < code.length && code[pos] !== '"') {
+              pos++;
+            }
+            const value = code.slice(start, pos);
+            lexPush("string", value, start);
+            if (pos < code.length) pos++;
+          } else {
+            pos++;
+          }
+        }
+
+        return lexer;
+      }
+
+      async function runPipeline(opts) {
+        const code = editor.getValue();
+        const result = document.getElementById("result");
+        const lexer = tokenizePupSource(code);
+        /* result.innerHTML = lexer
+          .map(
+            (token) =>
+              `<div><strong>${token.type}</strong>: ${token.value}</div>`,
+          )
+          .join("");*/
+
+        try {
+          const ast = createAst(lexer);
+          validateTypes(ast);
+          const includes = [];
+          collectIncludes(ast.stmts, includes);
+          assertModuleRequirements(includes);
+          const body = transpile(ast);
+          const bundled = emitBundledOutput(ast, body);
+          const js = bundled.js;
+          lastTranspiledJs = js;
+          setDownloadReady(true);
+          console.log(lexer, ast, js, bundled.modules);
+          const target = getTranspileTarget();
+          const targetLabel = transpileTargetLabel(target);
+          const filename = transpiledDownloadFilename();
+          const moduleNote =
+            bundled.modules.length > 0
+              ? " Bundled modules: <code>" +
+                escapeHtml(bundled.modules.join(", ")) +
+                "</code>."
+              : " No includes — core runtime only.";
+          const downloadBlock =
+            '<div class="mb-3 p-3 rounded border border-secondary">' +
+            "<strong>Download transpiled output</strong>" +
+            '<p class="mb-2 mt-1 small mb-0">File: <code>' +
+            escapeHtml(filename) +
+            "</code>." +
+            moduleNote +
+            (target === "nodejs"
+              ? " Run with <code>node " + escapeHtml(filename) + "</code>."
+              : target === "html"
+                ? " Open the file in a browser."
+                : "") +
+            "</p>" +
+            '<button type="button" class="btn btn-success btn-sm mt-2" id="download-transpiled-inline">Download ' +
+            escapeHtml(filename) +
+            "</button></div>";
+          if (opts.execute) {
+            await run(ast);
+            result.innerHTML =
+              "<br>Ran OK (" +
+              (target === "nodejs"
+                ? "Node.js shim in browser"
+                : target === "html"
+                  ? "HTML bundle (use Run in editor or open downloaded file)"
+                  : "browser") +
+              ")" +
+              downloadBlock;
+          } else {
+            result.innerHTML =
+              "<h3>Transpiled output (" +
+              targetLabel +
+              ")</h3>" +
+              downloadBlock +
+              "<pre style='margin:0;white-space:pre-wrap'>" +
+              escapeHtml(js) +
+              "</pre>";
+          }
+        } catch (err) {
+          lastTranspiledJs = null;
+          setDownloadReady(false);
+          result.innerHTML =
+            "<span style='color:red'>Error: " + formatPupError(err) + "</span>";
+          console.error(err);
+        }
+      }
+
+      const builtinTypeNames = new Set([
+        "any",
+        "int",
+        "double",
+        "bigint",
+        "string",
+        "boolean",
+        "object",
+        "array",
+      ]);
+
+      const reservedKeywords = new Set([
+        "switch",
+        "case",
+        "default",
+        "true",
+        "false",
+      ]);
+
+      function checkName(name) {
+        if (name === "__internals") {
+          throw new Error("'" + name + "' is reserved");
+        }
+        if (builtinTypeNames.has(name)) {
+          throw new Error("'" + name + "' is a reserved type name");
+        }
+        if (reservedKeywords.has(name)) {
+          throw new Error("'" + name + "' is a reserved keyword");
+        }
+        if (baseApiNames.has(name)) {
+          throw new Error("'" + name + "' is a built-in function");
+        }
+        if (allModuleExports.has(name)) {
+          throw new Error("'" + name + "' is reserved by an included module");
+        }
+        if (moduleNames.has(name)) {
+          throw new Error("'" + name + "' is a built-in module name");
+        }
+      }
+
+      function isIdentCont(ch) {
+        return ch != null && /[a-zA-Z0-9_]/.test(ch);
+      }
+
+      function lexWordAt(code, pos, word) {
+        if (code.slice(pos, pos + word.length) !== word) return false;
+        if (pos > 0 && isIdentCont(code[pos - 1])) return false;
+        if (isIdentCont(code[pos + word.length])) return false;
+        return true;
+      }
+
+      function getKnownTypes(includes) {
+        const types = new Set(builtinTypeNames);
+        for (const inc of includes) {
+          const mod = builtInModules[inc];
+          if (!mod) continue;
+          const exp = resolveModule(mod);
+          for (const k of Object.keys(exp)) {
+            if (typeof exp[k] === "function" && exp[k].pupType) {
+              types.add(k);
+            }
+          }
+        }
+        return types;
+      }
+
+      function typesCompatible(expected, actual) {
+        if (expected === "any" || actual === "any") return true;
+        if (expected === actual) return true;
+        if (expected === "double" && actual === "int") return true;
+        if (expected === "bigint" && actual === "int") return true;
+        return false;
+      }
+
+      function inferExprType(node, scope) {
+        if (!node) return "unknown";
+        if (node.type === "number") {
+          return node.value.includes(".") ? "double" : "int";
+        }
+        if (node.type === "string" || node.type === "html") return "string";
+        if (node.type === "boolean") return "boolean";
+        if (node.type === "object") return "object";
+        if (node.type === "array") return "array";
+        if (node.type === "new") return node.name;
+        if (node.type === "identifier") {
+          return scope.get(node.name) ?? "unknown";
+        }
+        if (node.type === "group") {
+          return inferExprType(node.value, scope);
+        }
+        if (node.type === "unary" && node.op === "minus") {
+          return inferExprType(node.value, scope);
+        }
+        if (node.type === "ifexpr") {
+          const t = inferExprType(node.whenTrue, scope);
+          const f = inferExprType(node.whenFalse, scope);
+          return t === f ? t : "unknown";
+        }
+        if (node.type === "op") {
+          if (node.op === "plus") {
+            const lt = inferExprType(node.a, scope);
+            const rt = inferExprType(node.b, scope);
+            if (lt === "string" || rt === "string") return "string";
+            if (lt === "double" || rt === "double") return "double";
+            return "int";
+          }
+          if (
+            node.op === "minus" ||
+            node.op === "multiply" ||
+            node.op === "divide"
+          ) {
+            const lt = inferExprType(node.a, scope);
+            const rt = inferExprType(node.b, scope);
+            if (lt === "double" || rt === "double") return "double";
+            return "int";
+          }
+        }
+        if (node.type === "call") {
+          const key = callLookupKey(node.callee);
+          if (key && functionReturnTypes.has(key)) {
+            return functionReturnTypes.get(key);
+          }
+        }
+        return "unknown";
+      }
+
+      function analyzeTypes(ast, options = {}) {
+        const soft = options.soft === true;
+        const warnings = [];
+        const errors = [];
+        const includes = [];
+        collectIncludes(ast.stmts, includes);
+        const knownTypes = getKnownTypes(includes);
+        const scope = new Map();
+
+        function fail(message, line) {
+          const entry = {
+            row: (line ?? 1) - 1,
+            column: 0,
+            text: message,
+            type: "error",
+          };
+          if (soft) {
+            errors.push(entry);
+            return;
+          }
+          const err = new Error(message);
+          err.line = line ?? 1;
+          throw err;
+        }
+
+        function warn(message, line) {
+          warnings.push({
+            row: (line ?? 1) - 1,
+            column: 0,
+            text: message,
+            type: "warning",
+          });
+        }
+
+        function validateTypeName(typeName, line) {
+          if (knownTypes.has(typeName)) return true;
+          const owner = typeOwners[typeName];
+          fail(
+            owner
+              ? "unknown type '" +
+                  typeName +
+                  "' (include " +
+                  owner +
+                  ")"
+              : "unknown type '" + typeName + "'",
+            line,
+          );
+          return false;
+        }
+
+        function checkAssignValue(name, value, line) {
+          const expected = scope.get(name);
+          if (!expected || expected === "unknown" || expected === "any") {
+            return;
+          }
+          const actual = inferExprType(value, scope);
+          if (actual === "unknown") return;
+          if (!typesCompatible(expected, actual)) {
+            fail(
+              "cannot assign " +
+                actual +
+                " to " +
+                expected +
+                " variable '" +
+                name +
+                "'",
+              line,
+            );
+          }
+        }
+
+        function assignTargetName(target) {
+          if (target?.type === "identifier") return target.value;
+          return null;
+        }
+
+        function analyzeStmts(stmts, scope) {
+          for (const stmt of stmts || []) {
+            analyzeStmt(stmt, scope);
+          }
+        }
+
+        function analyzeStmt(stmt, scope) {
+          if (!stmt) return;
+          if (stmt.type === "local") {
+            const line = stmt.line ?? 1;
+            if (stmt.pupType) {
+              if (!validateTypeName(stmt.pupType, line)) return;
+              if (stmt.pupType !== "any") {
+                const initType = inferExprType(stmt.value, scope);
+                if (
+                  initType !== "unknown" &&
+                  !typesCompatible(stmt.pupType, initType)
+                ) {
+                  fail(
+                    "cannot assign " +
+                      initType +
+                      " to " +
+                      stmt.pupType +
+                      " variable '" +
+                      stmt.name +
+                      "'",
+                    line,
+                  );
+                }
+              }
+              scope.set(stmt.name, stmt.pupType);
+            } else {
+              scope.set(stmt.name, inferExprType(stmt.value, scope));
+              warn(
+                "Variable '" +
+                  stmt.name +
+                  "' has no type annotation (no type safety)",
+                line,
+              );
+            }
+            return;
+          }
+          if (stmt.type === "reassign" || stmt.type === "assign") {
+            checkAssignValue(stmt.name, stmt.value, stmt.line ?? 1);
+            return;
+          }
+          if (stmt.type === "set") {
+            const name = assignTargetName(stmt.target);
+            if (name) {
+              checkAssignValue(name, stmt.value, stmt.line ?? 1);
+            }
+            return;
+          }
+          if (stmt.type === "function") {
+            const fnScope = new Map(scope);
+            for (const param of stmt.params || []) {
+              fnScope.set(param, "unknown");
+            }
+            analyzeStmts(stmt.body?.stmts, fnScope);
+            return;
+          }
+          if (stmt.type === "for") {
+            scope.set(stmt.name, "int");
+            analyzeStmts(stmt.body?.stmts, scope);
+            return;
+          }
+          if (stmt.type === "while") {
+            analyzeStmts(stmt.body?.stmts, scope);
+            return;
+          }
+          if (stmt.type === "if") {
+            analyzeStmts(stmt.body?.stmts, scope);
+            for (const branch of stmt.elif || []) {
+              analyzeStmts(branch.body?.stmts, scope);
+            }
+            analyzeStmts(stmt.elseBody?.stmts, scope);
+            return;
+          }
+          if (stmt.type === "switch") {
+            for (const branch of stmt.cases || []) {
+              analyzeStmts(branch.body?.stmts, scope);
+            }
+            analyzeStmts(stmt.defaultBody?.stmts, scope);
+          }
+        }
+
+        analyzeStmts(ast.stmts, scope);
+        return { warnings, errors };
+      }
+
+      function applyTypeAnnotations(result) {
+        editor.session.setAnnotations([
+          ...result.warnings,
+          ...result.errors,
+        ]);
+      }
+
+      function validateTypes(ast) {
+        const result = analyzeTypes(ast);
+        applyTypeAnnotations(result);
+        if (result.errors.length) {
+          const err = new Error(result.errors[0].text);
+          err.line = result.errors[0].row + 1;
+          throw err;
+        }
+      }
+
+      function collectIncludes(stmts, out) {
+        for (const s of stmts || []) {
+          if (!s) continue;
+          if (s.type === "include") out.push(s.name);
+          if (s.body?.stmts) collectIncludes(s.body.stmts, out);
+          if (s.type === "function" && s.body?.stmts) {
+            collectIncludes(s.body.stmts, out);
+          }
+          if (s.type === "if") {
+            for (const branch of s.elif || []) {
+              collectIncludes(branch.body?.stmts, out);
+            }
+            collectIncludes(s.elseBody?.stmts, out);
+          }
+          if (s.type === "switch") {
+            for (const branch of s.cases || []) {
+              collectIncludes(branch.body?.stmts, out);
+            }
+            collectIncludes(s.defaultBody?.stmts, out);
+          }
+        }
+      }
+
+      function collectDeclaredNames(stmts, out) {
+        for (const s of stmts || []) {
+          if (!s) continue;
+          if (s.type === "local") out.add(s.name);
+          if (s.type === "function") {
+            out.add(s.name);
+            for (const param of s.params || []) out.add(param);
+            collectDeclaredNames(s.body?.stmts, out);
+          }
+          if (s.type === "for") {
+            out.add(s.name);
+            collectDeclaredNames(s.body?.stmts, out);
+          }
+          if (s.type === "while") collectDeclaredNames(s.body?.stmts, out);
+          if (s.type === "if") {
+            collectDeclaredNames(s.body?.stmts, out);
+            for (const branch of s.elif || []) {
+              collectDeclaredNames(branch.body?.stmts, out);
+            }
+            collectDeclaredNames(s.elseBody?.stmts, out);
+          }
+          if (s.type === "switch") {
+            collectDeclaredNamesFromExpr(s.value, out);
+            for (const branch of s.cases || []) {
+              collectDeclaredNamesFromExpr(branch.value, out);
+              collectDeclaredNames(branch.body?.stmts, out);
+            }
+            collectDeclaredNames(s.defaultBody?.stmts, out);
+          }
+          if (s.type === "return" && s.value) {
+            collectDeclaredNamesFromExpr(s.value, out);
+          }
+          if (s.type === "expr" && s.value) {
+            collectDeclaredNamesFromExpr(s.value, out);
+          }
+          if (s.type === "local" && s.value) {
+            collectDeclaredNamesFromExpr(s.value, out);
+          }
+          if (s.type === "set") {
+            collectDeclaredNamesFromExpr(s.target, out);
+            collectDeclaredNamesFromExpr(s.value, out);
+          }
+          if (s.type === "reassign" || s.type === "assign") {
+            collectDeclaredNamesFromExpr(s.value, out);
+          }
+        }
+      }
+
+      function collectDeclaredNamesFromExpr(node, out) {
+        if (!node) return;
+        if (node.type === "html") {
+          const re = /\{\{([^}]+)\}\}/g;
+          let m;
+          while ((m = re.exec(node.value))) {
+            const expr = m[1].trim();
+            const root = expr.split(".")[0];
+            if (/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(root)) out.add(root);
+          }
+          return;
+        }
+        if (node.type === "anonfn") {
+          for (const param of node.params || []) out.add(param);
+          collectDeclaredNames(node.body?.stmts, out);
+          return;
+        }
+        if (node.type === "call") {
+          collectDeclaredNamesFromExpr(node.callee, out);
+          for (const arg of node.args || []) {
+            collectDeclaredNamesFromExpr(arg, out);
+          }
+          return;
+        }
+        if (node.type === "op" || node.type === "cond") {
+          collectDeclaredNamesFromExpr(node.a, out);
+          collectDeclaredNamesFromExpr(node.b, out);
+        }
+        if (node.type === "dot" || node.type === "index") {
+          collectDeclaredNamesFromExpr(node.a, out);
+          collectDeclaredNamesFromExpr(node.b, out);
+        }
+        if (node.type === "object") {
+          for (const prop of node.props || []) {
+            collectDeclaredNamesFromExpr(prop.value, out);
+          }
+        }
+        if (node.type === "array") {
+          for (const item of node.items || []) {
+            collectDeclaredNamesFromExpr(item, out);
+          }
+        }
+        if (node.type === "group")
+          collectDeclaredNamesFromExpr(node.value, out);
+        if (node.type === "inc") collectDeclaredNamesFromExpr(node.a, out);
+        if (node.type === "unary")
+          collectDeclaredNamesFromExpr(node.value, out);
+        if (node.type === "ifexpr") {
+          collectDeclaredNamesFromExpr(node.whenTrue, out);
+          collectDeclaredNamesFromExpr(node.whenFalse, out);
+        }
+      }
+
+      function setDeclaredNames(ast) {
+        declaredNames = new Set();
+        collectDeclaredNames(ast.stmts, declaredNames);
+      }
+
+      function resolveIdentifier(name) {
+        if (name === "__internals" && !config.internalAPI) {
+          throw new Error("__internals is disabled in this environment");
+        }
+        if (activeApiNames.has(name)) return "pupApi." + name;
+        if (declaredNames.has(name)) return name;
+        throw new Error("'" + name + "' is not defined");
+      }
+
+      function transpile(ast) {
+        setActiveApi(ast);
+        setDeclaredNames(ast);
+        return '"use strict";\n' + transpileStmts(ast.stmts);
+      }
+
+      function transpileStmts(stmts) {
+        return (stmts || [])
+          .filter(Boolean)
+          .map((s) => transpileStmt(s))
+          .join("\n");
+      }
+
+      function transpileStmt(stmt) {
+        if (stmt.type === "local") {
+          checkName(stmt.name);
+          return "let " + stmt.name + " = " + transpileExpr(stmt.value) + ";";
+        }
+        if (stmt.type === "if") {
+          let code =
+            "if (" +
+            transpileCond(stmt.cond) +
+            ") {\n" +
+            transpileStmts(stmt.body?.stmts) +
+            "\n}";
+          if (stmt.elif) {
+            for (const branch of stmt.elif) {
+              code +=
+                " else if (" +
+                transpileCond(branch.cond) +
+                ") {\n" +
+                transpileStmts(branch.body?.stmts) +
+                "\n}";
+            }
+          }
+          if (stmt.elseBody) {
+            code += " else {\n" + transpileStmts(stmt.elseBody?.stmts) + "\n}";
+          }
+          return code;
+        }
+        if (stmt.type === "switch") {
+          const switchExpr = transpileSwitchValue(stmt.value);
+          let code = "switch (" + switchExpr + ") {\n";
+          for (const branch of stmt.cases || []) {
+            code +=
+              "case " +
+              transpileExpr(branch.value) +
+              ":\n" +
+              transpileStmts(branch.body?.stmts) +
+              "\nbreak;\n";
+          }
+          if (stmt.defaultBody) {
+            code +=
+              "default:\n" +
+              transpileStmts(stmt.defaultBody?.stmts) +
+              "\nbreak;\n";
+          }
+          return code + "}";
+        }
+        if (stmt.type === "while") {
+          return (
+            "while (" +
+            transpileCond(stmt.cond) +
+            ") {\n" +
+            transpileStmts(stmt.body?.stmts) +
+            "\n}"
+          );
+        }
+        if (stmt.type === "for") {
+          checkName(stmt.name);
+          const step = stmt.step ? transpileExpr(stmt.step) : "1";
+          return (
+            "for (let " +
+            stmt.name +
+            " = " +
+            transpileExpr(stmt.start) +
+            "; " +
+            stmt.name +
+            " <= " +
+            transpileExpr(stmt.end) +
+            "; " +
+            stmt.name +
+            " += " +
+            step +
+            ") {\n" +
+            transpileStmts(stmt.body?.stmts) +
+            "\n}"
+          );
+        }
+        if (stmt.type === "set") {
+          if (stmt.op) {
+            const op = {
+              pluseq: "+=",
+              minuseq: "-=",
+              multeq: "*=",
+              diveq: "/=",
+            };
+            return (
+              transpileExpr(stmt.target) +
+              " " +
+              op[stmt.op] +
+              " " +
+              transpileExpr(stmt.value) +
+              ";"
+            );
+          }
+          return (
+            transpileExpr(stmt.target) + " = " + transpileExpr(stmt.value) + ";"
+          );
+        }
+        if (stmt.type === "reassign") {
+          const lhs = activeApiNames.has(stmt.name)
+            ? "pupApi." + stmt.name
+            : resolveIdentifier(stmt.name);
+          return lhs + " = " + transpileExpr(stmt.value) + ";";
+        }
+        if (stmt.type === "function") {
+          checkName(stmt.name);
+          const params = stmt.params.join(", ");
+          const body = transpileStmts(stmt.body?.stmts);
+          const fn = "async function(" + params + ") {\n" + body + "\n}";
+          if (stmt.local) {
+            return "const " + stmt.name + " = " + fn + ";";
+          }
+          return (
+            "async function " +
+            stmt.name +
+            "(" +
+            params +
+            ") {\n" +
+            body +
+            "\n}"
+          );
+        }
+        if (stmt.type === "return") {
+          if (stmt.value) return "return " + transpileExpr(stmt.value) + ";";
+          return "return;";
+        }
+        if (stmt.type === "assign") {
+          if (activeApiNames.has(stmt.name)) {
+            throw new Error("'" + stmt.name + "' is not assignable");
+          }
+          resolveIdentifier(stmt.name);
+          const op = {
+            pluseq: "+=",
+            minuseq: "-=",
+            multeq: "*=",
+            diveq: "/=",
+          };
+          return (
+            stmt.name +
+            " " +
+            op[stmt.op] +
+            " " +
+            transpileExpr(stmt.value) +
+            ";"
+          );
+        }
+        if (stmt.type === "expr") {
+          return transpileExpr(stmt.value) + ";";
+        }
+        if (stmt.type === "include") {
+          return "";
+        }
+        return "";
+      }
+
+      function transpileCond(node) {
+        if (node.type === "cond") {
+          if (node.op === "not") {
+            return "(!" + transpileCond(node.a) + ")";
+          }
+          if (node.op === "and" || node.op === "andop") {
+            return (
+              "(" + transpileCond(node.a) + " && " + transpileCond(node.b) + ")"
+            );
+          }
+          if (node.op === "or" || node.op === "orop") {
+            return (
+              "(" + transpileCond(node.a) + " || " + transpileCond(node.b) + ")"
+            );
+          }
+          const cmp = {
+            eq: "===",
+            ne: "!==",
+            lt: "<",
+            gt: ">",
+            lte: "<=",
+            gte: ">=",
+          };
+          return (
+            "(" +
+            transpileExpr(node.a) +
+            " " +
+            cmp[node.op] +
+            " " +
+            transpileExpr(node.b) +
+            ")"
+          );
+        }
+        return transpileExpr(node);
+      }
+
+      function transpileSwitchValue(node) {
+        const expr = transpileExpr(node);
+        return (
+          "((function(__enumSwitchValue) { return __enumSwitchValue != null && __enumSwitchValue.pupEnumInstance ? __enumSwitchValue.value : __enumSwitchValue; })(" +
+          expr +
+          "))"
+        );
+      }
+
+      function transpileHtml(node) {
+        const raw = node.value;
+        const re = /\{\{([^}]+)\}\}/g;
+        const parts = [];
+        let last = 0;
+        let m;
+        while ((m = re.exec(raw))) {
+          if (m.index > last) {
+            parts.push(JSON.stringify(raw.slice(last, m.index)));
+          }
+          const expr = m[1].trim();
+          if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(expr)) {
+            throw new Error(
+              "HTML template {{}} must be a variable name: {{" + expr + "}}",
+            );
+          }
+          const root = expr.split(".")[0];
+          resolveIdentifier(root);
+          if (expr.includes(".")) {
+            const segments = expr.split(".");
+            let code = resolveIdentifier(segments[0]);
+            for (let i = 1; i < segments.length; i++) {
+              code += "." + segments[i];
+            }
+            parts.push("String(" + code + ")");
+          } else {
+            parts.push("String(" + resolveIdentifier(expr) + ")");
+          }
+          last = m.index + m[0].length;
+        }
+        if (last < raw.length) {
+          parts.push(JSON.stringify(raw.slice(last)));
+        }
+        if (parts.length === 0) return '""';
+        if (parts.length === 1) return parts[0];
+        return parts.join(" + ");
+      }
+
+      function transpileExpr(node) {
+        if (!node) return "undefined";
+        if (node.type === "html") return transpileHtml(node);
+        if (node.type === "number") return node.value;
+        if (node.type === "string") return JSON.stringify(node.value);
+        if (node.type === "boolean") return node.value;
+        if (node.type === "identifier") {
+          return resolveIdentifier(node.value);
+        }
+        if (node.type === "unary") {
+          return "(-" + transpileExpr(node.value) + ")";
+        }
+        if (node.type === "ifexpr") {
+          return (
+            "(" +
+            transpileCond(node.cond) +
+            " ? " +
+            transpileExpr(node.whenTrue) +
+            " : " +
+            transpileExpr(node.whenFalse) +
+            ")"
+          );
+        }
+        if (node.type === "op") {
+          if (node.op === "plus") {
+            return (
+              "pupAdd(" +
+              transpileExpr(node.a) +
+              ", " +
+              transpileExpr(node.b) +
+              ")"
+            );
+          }
+          const op = {
+            minus: "-",
+            multiply: "*",
+            divide: "/",
+          };
+          return (
+            "(" +
+            transpileExpr(node.a) +
+            " " +
+            op[node.op] +
+            " " +
+            transpileExpr(node.b) +
+            ")"
+          );
+        }
+        if (node.type === "dot") {
+          return transpileExpr(node.a) + "." + node.b.value;
+        }
+        if (node.type === "index") {
+          return transpileExpr(node.a) + "[" + transpileExpr(node.b) + "]";
+        }
+        if (node.type === "object") {
+          const parts = node.props.map((p) => {
+            const k = /^[a-zA-Z_][a-zA-Z0-9_]*$/.test(p.key)
+              ? p.key
+              : JSON.stringify(p.key);
+            return k + ": " + transpileExpr(p.value);
+          });
+          return "{ " + parts.join(", ") + " }";
+        }
+        if (node.type === "array") {
+          return "[" + node.items.map(transpileExpr).join(", ") + "]";
+        }
+        if (node.type === "call") {
+          const callee = transpileExpr(node.callee);
+          const args = node.args.map(transpileExpr).join(", ");
+          return "await " + callee + "(" + args + ")";
+        }
+        if (node.type === "group") {
+          return node.value
+            ? "(" + transpileExpr(node.value) + ")"
+            : "undefined";
+        }
+        if (node.type === "inc") {
+          return transpileExpr(node.a) + "++";
+        }
+        if (node.type === "new") {
+          if (!isTypeInScope(node.name, currentAst)) {
+            const hint = typeOwners[node.name]
+              ? "include " + typeOwners[node.name]
+              : "include its module";
+            throw new Error("unknown type " + node.name + " (" + hint + ")");
+          }
+          return (
+            "new pupApi." +
+            node.name +
+            "(" +
+            node.args.map(transpileExpr).join(", ") +
+            ")"
+          );
+        }
+        if (node.type === "anonfn") {
+          const params = node.params.join(", ");
+          const body = transpileStmts(node.body?.stmts);
+          return "async function(" + params + ") {\n" + body + "\n}";
+        }
+        return "undefined";
+      }
+
+      async function run(ast, extra) {
+        pupRunGeneration++;
+        lastRunAst = ast;
+        resetPupRuntimeUi();
+        const includes = [];
+        collectIncludes(ast.stmts, includes);
+        for (const name of includes) {
+          if (!builtInModules[name]) {
+            throw new Error("unknown module: " + name);
+          }
+        }
+        assertModuleRequirements(includes);
+        const api = buildApi(ast, extra);
+        const js = transpile(ast);
+        const fn = new Function(
+          "pupApi",
+          "pupAdd",
+          "return (async () => {\n" + js + "\n})();",
+        );
+        try {
+          await fn(api, add);
+        } catch (e) {
+          if (e === PUP_RUN_CANCELLED) return;
+          throw e;
+        }
+      }
+
+      function createAst(lexer) {
+        let pos = 0;
+        const ast = { stmts: [] };
+
+        function parseLine() {
+          if (pos < lexer.length) return lexer[pos].line ?? 1;
+          if (lexer.length > 0) return lexer[lexer.length - 1].line ?? 1;
+          return 1;
+        }
+
+        function parseError(message) {
+          const err = new Error(message);
+          err.line = parseLine();
+          throw err;
+        }
+
+        function checkNameHere(name) {
+          try {
+            checkName(name);
+          } catch (e) {
+            e.line = parseLine();
+            throw e;
+          }
+        }
+
+        function assertCore(feature, label) {
+          if (!coreEnabled(feature)) {
+            parseError(label + " is disabled in this environment");
+          }
+        }
+
+        function assertInclude() {
+          if (config.allowInclude === false) {
+            parseError("include is disabled in this environment");
+          }
+        }
+
+        function isKnownTypeName(name) {
+          return (
+            builtinTypeNames.has(name) ||
+            Object.prototype.hasOwnProperty.call(typeOwners, name)
+          );
+        }
+
+        function readTypeAnnotation() {
+          if (lexer[pos]?.type === "type") {
+            return lexer[pos++].value;
+          }
+          if (
+            lexer[pos]?.type === "identifier" &&
+            isKnownTypeName(lexer[pos].value)
+          ) {
+            return lexer[pos++].value;
+          }
+          return null;
+        }
+
+        while (pos < lexer.length) ast.stmts.push(parseStmt());
+        return ast;
+
+        function parseFunctionBody() {
+          if (lexer[pos] && lexer[pos].type === "colon") {
+            pos++;
+          }
+          return parseBlock();
+        }
+
+        function parseAnonFunction() {
+          assertCore("functions", "function");
+          const params = [];
+          if (lexer[pos]?.type === "leftp") {
+            pos++;
+            if (lexer[pos]?.type !== "rightp") {
+              if (!lexer[pos] || lexer[pos].type !== "identifier") {
+                parseError("expected parameter name");
+              }
+              params.push(lexer[pos++].value);
+              while (lexer[pos]?.type === "comma") {
+                pos++;
+                if (!lexer[pos] || lexer[pos].type !== "identifier") {
+                  parseError("expected parameter name");
+                }
+                params.push(lexer[pos++].value);
+              }
+            }
+            if (!lexer[pos] || lexer[pos].type !== "rightp") {
+              parseError("expected )");
+            }
+            pos++;
+          }
+          const body = parseFunctionBody();
+          return { type: "anonfn", params, body };
+        }
+
+        function parseFunctionDecl(local) {
+          assertCore("functions", "function");
+          if (!lexer[pos] || lexer[pos].type !== "identifier") {
+            parseError("expected function name");
+          }
+          const name = lexer[pos++].value;
+          checkNameHere(name);
+          if (!lexer[pos] || lexer[pos].type !== "leftp") {
+            parseError("expected ( after function name");
+          }
+          pos++;
+          const params = parseParamList();
+          const body = parseFunctionBody();
+          return { type: "function", name, params, body, local };
+        }
+
+        function isBlockEnd(type) {
+          return type === "end";
+        }
+
+        function isStmtStart(type) {
+          return (
+            type === "end" ||
+            type === "return" ||
+            type === "include" ||
+            type === "local" ||
+            type === "function" ||
+            type === "condition" ||
+            type === "switch" ||
+            type === "case" ||
+            type === "default" ||
+            type === "while" ||
+            type === "for"
+          );
+        }
+
+        function parseForBound() {
+          return parseAdd();
+        }
+
+        function parseParamList() {
+          const params = [];
+          if (lexer[pos]?.type !== "rightp") {
+            if (!lexer[pos] || lexer[pos].type !== "identifier") {
+              parseError("expected parameter name");
+            }
+            params.push(lexer[pos++].value);
+            while (lexer[pos]?.type === "comma") {
+              pos++;
+              if (!lexer[pos] || lexer[pos].type !== "identifier") {
+                parseError("expected parameter name");
+              }
+              params.push(lexer[pos++].value);
+            }
+          }
+          if (!lexer[pos] || lexer[pos].type !== "rightp") {
+            parseError("expected )");
+          }
+          pos++;
+          return params;
+        }
+
+        function parseStmt() {
+          if (!lexer[pos]) return;
+          if (lexer[pos].type === "include") {
+            assertInclude();
+            pos++;
+            if (!lexer[pos] || lexer[pos].type !== "identifier") {
+              parseError("expected module name after include");
+            }
+            const name = lexer[pos++].value;
+            if (!builtInModules[name]) {
+              parseError("unknown module: " + name);
+            }
+            const modDef = builtInModules[name];
+            const target = getTranspileTarget();
+            if (modDef?.pupRequiresNode && target === "browser") {
+              parseError(
+                "include " +
+                  name +
+                  " requires Node.js or HTML transpile target",
+              );
+            }
+            if (modDef?.pupRequiresBrowser && target === "nodejs") {
+              parseError(
+                "include " +
+                  name +
+                  " requires Browser or HTML transpile target",
+              );
+            }
+            return { type: "include", name };
+          }
+          if (lexer[pos].type === "function") {
+            assertCore("functions", "function");
+            pos++;
+            if (lexer[pos]?.type === "leftp") {
+              return { type: "expr", value: parseAnonFunction() };
+            }
+            return parseFunctionDecl(false);
+          }
+          if (
+            lexer[pos].type === "local" &&
+            lexer[pos + 1]?.type === "function"
+          ) {
+            assertCore("functions", "function");
+            pos += 2;
+            return parseFunctionDecl(true);
+          }
+          if (lexer[pos].type === "return") {
+            assertCore("return", "return");
+            pos++;
+            let value = null;
+            if (lexer[pos] && !isBlockEnd(lexer[pos].type)) {
+              value = parseExpr();
+            }
+            return { type: "return", value };
+          }
+          if (lexer[pos].type === "local") {
+            assertCore("variables", "local");
+            pos++;
+            const pupType = readTypeAnnotation();
+            if (!lexer[pos] || lexer[pos].type !== "identifier") {
+              parseError("expected variable name after local");
+            }
+            const nameTok = lexer[pos++];
+            checkNameHere(nameTok.value);
+            if (!lexer[pos] || lexer[pos].type !== "equals") {
+              parseError("expected = in local declaration");
+            }
+            pos++;
+            const node = {
+              type: "local",
+              name: nameTok.value,
+              value: parseExpr(),
+              line: nameTok.line,
+            };
+            if (pupType) node.pupType = pupType;
+            return node;
+          }
+          if (lexer[pos].type === "condition") {
+            assertCore("controlFlow", "if");
+            return parseIfChain();
+          }
+          if (lexer[pos].type === "switch") {
+            assertCore("switch", "switch");
+            return parseSwitch();
+          }
+          if (lexer[pos].type === "while") {
+            assertCore("controlFlow", "while");
+            pos++;
+            let cond;
+            if (lexer[pos].type === "leftp") {
+              pos++;
+              cond = parseCondition();
+              pos++;
+            } else {
+              cond = parseCondition();
+            }
+            const node = { type: "while", cond };
+            if (lexer[pos] && lexer[pos].type === "colon") {
+              pos++;
+              node.body = parseBlock();
+            }
+            return node;
+          }
+          if (lexer[pos].type === "for") {
+            assertCore("controlFlow", "for");
+            pos++;
+            if (!lexer[pos] || lexer[pos].type !== "identifier") {
+              parseError("expected loop variable after for");
+            }
+            const name = lexer[pos++].value;
+            checkNameHere(name);
+            if (!lexer[pos] || lexer[pos].type !== "equals") {
+              parseError("expected = in for loop");
+            }
+            pos++;
+            const start = parseForBound();
+            if (!lexer[pos] || lexer[pos].type !== "comma") {
+              parseError("expected , after for start");
+            }
+            pos++;
+            const end = parseForBound();
+            let step = null;
+            if (lexer[pos]?.type === "comma") {
+              pos++;
+              step = parseForBound();
+            }
+            const node = { type: "for", name, start, end, step };
+            if (lexer[pos] && lexer[pos].type === "colon") {
+              pos++;
+              node.body = parseBlock();
+            }
+            return node;
+          }
+          {
+            const mark = pos;
+            const pupType = readTypeAnnotation();
+            if (
+              pupType &&
+              lexer[pos]?.type === "identifier" &&
+              lexer[pos + 1]?.type === "equals"
+            ) {
+              const nameTok = lexer[pos++];
+              checkNameHere(nameTok.value);
+              pos++;
+              assertCore("variables", "assignment");
+              return {
+                type: "local",
+                name: nameTok.value,
+                pupType,
+                value: parseExpr(),
+                line: nameTok.line,
+              };
+            }
+            pos = mark;
+          }
+          if (lexer[pos].type === "identifier") {
+            const mark = pos;
+            const target = parseAssignTarget();
+            if (lexer[pos]?.type === "equals") {
+              assertCore("variables", "assignment");
+              pos++;
+              return { type: "set", target, value: parseExpr() };
+            }
+            if (
+              lexer[pos]?.type === "pluseq" ||
+              lexer[pos]?.type === "minuseq" ||
+              lexer[pos]?.type === "multeq" ||
+              lexer[pos]?.type === "diveq"
+            ) {
+              assertCore("variables", "assignment");
+              const op = lexer[pos++].type;
+              return { type: "set", target, op, value: parseExpr() };
+            }
+            pos = mark;
+            const name = lexer[pos].value;
+            const op = lexer[pos + 1]?.type;
+            if (op === "equals") {
+              assertCore("variables", "assignment");
+              pos += 2;
+              checkNameHere(name);
+              return { type: "reassign", name, value: parseExpr() };
+            }
+            if (
+              op === "pluseq" ||
+              op === "minuseq" ||
+              op === "multeq" ||
+              op === "diveq"
+            ) {
+              assertCore("variables", "assignment");
+              pos += 2;
+              checkNameHere(name);
+              return { type: "assign", op, name, value: parseExpr() };
+            }
+          }
+          return { type: "expr", value: parseExpr() };
+        }
+
+        function parseMemberChain(n) {
+          while (
+            lexer[pos]?.type === "dot" ||
+            lexer[pos]?.type === "leftbracket"
+          ) {
+            if (lexer[pos].type === "dot") {
+              pos++;
+              if (!lexer[pos] || lexer[pos].type !== "identifier") {
+                parseError("expected name after .");
+              }
+              const prop = lexer[pos++];
+              n = {
+                type: "dot",
+                a: n,
+                b: { type: "identifier", value: prop.value },
+              };
+            } else {
+              pos++;
+              const index = parseExpr();
+              if (!lexer[pos] || lexer[pos].type !== "rightbracket") {
+                parseError("expected ]");
+              }
+              pos++;
+              n = { type: "index", a: n, b: index };
+            }
+          }
+          return n;
+        }
+
+        function parseAssignTarget() {
+          return parseMemberChain(parsePrimary());
+        }
+
+        function parseBlock() {
+          const block = { stmts: [] };
+          while (pos < lexer.length && lexer[pos].type !== "end") {
+            block.stmts.push(parseStmt());
+          }
+          if (lexer[pos] && lexer[pos].type === "end") pos++;
+          return block;
+        }
+
+        function parseIfBody() {
+          const block = { stmts: [] };
+          while (
+            pos < lexer.length &&
+            lexer[pos].type !== "end" &&
+            lexer[pos].type !== "else"
+          ) {
+            block.stmts.push(parseStmt());
+          }
+          return block;
+        }
+
+        function parseIfCond() {
+          return parseCondition();
+        }
+
+        function parseSwitchCaseBody() {
+          const block = { stmts: [] };
+          while (
+            pos < lexer.length &&
+            lexer[pos].type !== "end" &&
+            lexer[pos].type !== "case" &&
+            lexer[pos].type !== "default"
+          ) {
+            block.stmts.push(parseStmt());
+          }
+          return block;
+        }
+
+        function parseSwitch() {
+          pos++;
+          const value = parseExpr();
+          if (!lexer[pos] || lexer[pos].type !== "colon") {
+            parseError("expected : after switch value");
+          }
+          pos++;
+          const node = { type: "switch", value, cases: [], defaultBody: null };
+          while (lexer[pos] && lexer[pos].type !== "end") {
+            if (lexer[pos].type === "case") {
+              pos++;
+              const caseValue = parseExpr();
+              if (!lexer[pos] || lexer[pos].type !== "colon") {
+                parseError("expected : after case value");
+              }
+              pos++;
+              node.cases.push({
+                value: caseValue,
+                body: parseSwitchCaseBody(),
+              });
+            } else if (lexer[pos].type === "default") {
+              pos++;
+              if (!lexer[pos] || lexer[pos].type !== "colon") {
+                parseError("expected : after default");
+              }
+              pos++;
+              if (node.defaultBody) {
+                parseError("switch can only have one default");
+              }
+              node.defaultBody = parseSwitchCaseBody();
+            } else {
+              parseError("expected case, default, or end in switch");
+            }
+          }
+          if (lexer[pos] && lexer[pos].type === "end") pos++;
+          return node;
+        }
+
+        function parseIfChain() {
+          pos++;
+          const node = { type: "if", cond: parseIfCond(), elif: [] };
+          if (!lexer[pos] || lexer[pos].type !== "colon") {
+            parseError("expected : after if condition");
+          }
+          pos++;
+          node.body = parseIfBody();
+          while (lexer[pos] && lexer[pos].type === "else") {
+            pos++;
+            if (lexer[pos] && lexer[pos].type === "condition") {
+              pos++;
+              const elifCond = parseIfCond();
+              if (!lexer[pos] || lexer[pos].type !== "colon") {
+                parseError("expected : after else if");
+              }
+              pos++;
+              node.elif.push({ cond: elifCond, body: parseIfBody() });
+            } else {
+              if (!lexer[pos] || lexer[pos].type !== "colon") {
+                parseError("expected : after else");
+              }
+              pos++;
+              node.elseBody = parseIfBody();
+              break;
+            }
+          }
+          if (lexer[pos] && lexer[pos].type === "end") pos++;
+          return node;
+        }
+
+        function parseCondition() {
+          return parseCondOr();
+        }
+
+        function parseCondOr() {
+          let n = parseCondAnd();
+          while (
+            pos < lexer.length &&
+            (lexer[pos].type === "or" || lexer[pos].type === "orop")
+          ) {
+            const op = lexer[pos++].type;
+            n = { type: "cond", op, a: n, b: parseCondAnd() };
+          }
+          return n;
+        }
+
+        function parseCondAnd() {
+          let n = parseCondNot();
+          while (
+            pos < lexer.length &&
+            (lexer[pos].type === "and" || lexer[pos].type === "andop")
+          ) {
+            const op = lexer[pos++].type;
+            n = { type: "cond", op, a: n, b: parseCondNot() };
+          }
+          return n;
+        }
+
+        function parseCondNot() {
+          if (lexer[pos]?.type === "not") {
+            pos++;
+            return { type: "cond", op: "not", a: parseCondNot() };
+          }
+          if (lexer[pos]?.type === "leftp") {
+            pos++;
+            let inner = parseCondOr();
+            if (lexer[pos]?.type === "rightp") {
+              pos++;
+              const cmp = ["eq", "ne", "lt", "gt", "lte", "gte"];
+              if (pos < lexer.length && cmp.includes(lexer[pos].type)) {
+                const op = lexer[pos++].type;
+                inner = { type: "cond", op, a: inner, b: parseExpr() };
+              }
+            }
+            return inner;
+          }
+          return parseCondCompare();
+        }
+
+        function parseCondCompare() {
+          let n = parseExpr();
+          const cmp = ["eq", "ne", "lt", "gt", "lte", "gte"];
+          if (pos < lexer.length && cmp.includes(lexer[pos].type)) {
+            const op = lexer[pos++].type;
+            n = { type: "cond", op, a: n, b: parseExpr() };
+          }
+          return n;
+        }
+
+        function parseExpr() {
+          if (lexer[pos]?.type === "html") {
+            const value = lexer[pos++].value;
+            return { type: "html", value };
+          }
+          return parseConcat();
+        }
+
+        function parseConcat() {
+          let n = parseAdd();
+          while (pos < lexer.length && lexer[pos].type === "plus") {
+            const op = lexer[pos++].type;
+            n = { type: "op", op, a: n, b: parseAdd() };
+          }
+          return n;
+        }
+
+        function parseAdd() {
+          let n = parseMul();
+          while (pos < lexer.length && lexer[pos].type === "minus") {
+            const op = lexer[pos++].type;
+            n = { type: "op", op, a: n, b: parseMul() };
+          }
+          return n;
+        }
+
+        function parseMul() {
+          let n = parseAtom();
+          while (
+            pos < lexer.length &&
+            (lexer[pos].type === "multiply" || lexer[pos].type === "divide")
+          ) {
+            const op = lexer[pos++].type;
+            n = { type: "op", op, a: n, b: parseAtom() };
+          }
+          return n;
+        }
+
+        function parseObject() {
+          pos++;
+          const props = [];
+          if (lexer[pos] && lexer[pos].type !== "rightbrace") {
+            while (true) {
+              let key;
+              if (lexer[pos]?.type === "identifier") {
+                key = lexer[pos++].value;
+              } else if (lexer[pos]?.type === "string") {
+                key = lexer[pos++].value;
+              } else {
+                parseError("expected property name");
+              }
+              if (!lexer[pos] || lexer[pos].type !== "colon") {
+                parseError("expected :");
+              }
+              pos++;
+              props.push({ key, value: parseExpr() });
+              if (lexer[pos]?.type !== "comma") break;
+              pos++;
+            }
+          }
+          if (!lexer[pos] || lexer[pos].type !== "rightbrace") {
+            parseError("expected }");
+          }
+          pos++;
+          return { type: "object", props };
+        }
+
+        function parseArray() {
+          pos++;
+          const items = [];
+          if (lexer[pos] && lexer[pos].type !== "rightbracket") {
+            items.push(parseExpr());
+            while (lexer[pos]?.type === "comma") {
+              pos++;
+              items.push(parseExpr());
+            }
+          }
+          if (!lexer[pos] || lexer[pos].type !== "rightbracket") {
+            parseError("expected ]");
+          }
+          pos++;
+          return { type: "array", items };
+        }
+
+        function parseAtom() {
+          if (lexer[pos]?.type === "minus") {
+            pos++;
+            return { type: "unary", op: "minus", value: parseAtom() };
+          }
+          let n = parsePrimary();
+          n = parseMemberChain(n);
+          while (pos < lexer.length) {
+            if (lexer[pos].type === "leftp") {
+              pos++;
+              const args = [];
+              if (lexer[pos] && lexer[pos].type !== "rightp") {
+                args.push(parseExpr());
+                while (lexer[pos]?.type === "comma") {
+                  pos++;
+                  args.push(parseExpr());
+                }
+              }
+              if (!lexer[pos] || lexer[pos].type !== "rightp") {
+                parseError("expected )");
+              }
+              pos++;
+              n = { type: "call", callee: n, args };
+              if (n.callee.type === "identifier" && n.callee.value === "eval") {
+                assertCore("eval", "eval");
+              }
+            } else if (lexer[pos].type === "inc") {
+              pos++;
+              n = { type: "inc", a: n };
+            } else {
+              break;
+            }
+          }
+          return n;
+        }
+
+        function parseNew() {
+          assertCore("new", "new");
+          pos++;
+          if (!lexer[pos] || lexer[pos].type !== "identifier") {
+            parseError("expected type name after new");
+          }
+          const name = lexer[pos++].value;
+          const args = [];
+          if (lexer[pos]?.type === "leftp") {
+            pos++;
+            if (lexer[pos] && lexer[pos].type !== "rightp") {
+              args.push(parseExpr());
+              while (lexer[pos]?.type === "comma") {
+                pos++;
+                args.push(parseExpr());
+              }
+            }
+            if (!lexer[pos] || lexer[pos].type !== "rightp") {
+              parseError("expected )");
+            }
+            pos++;
+          }
+          return { type: "new", name, args };
+        }
+
+        function parseIfExpr() {
+          assertCore("inlineIf", "inline if");
+          pos++;
+          const cond = parseCondition();
+          if (!lexer[pos] || lexer[pos].type !== "colon") {
+            parseError(
+              "expected : after inline if condition (if(cond) : x else y)",
+            );
+          }
+          pos++;
+          const whenTrue = parseExpr();
+          if (!lexer[pos] || lexer[pos].type !== "else") {
+            parseError("expected else in inline if");
+          }
+          pos++;
+          const whenFalse = parseExpr();
+          return { type: "ifexpr", cond, whenTrue, whenFalse };
+        }
+
+        function parsePrimary() {
+          if (!lexer[pos]) parseError("unexpected end");
+          if (lexer[pos].type === "condition") {
+            return parseIfExpr();
+          }
+          if (lexer[pos].type === "new") {
+            return parseNew();
+          }
+          if (lexer[pos].type === "function") {
+            assertCore("functions", "function");
+            pos++;
+            return parseAnonFunction();
+          }
+          if (lexer[pos].type === "leftbrace") {
+            return parseObject();
+          }
+          if (lexer[pos].type === "leftbracket") {
+            return parseArray();
+          }
+          if (lexer[pos].type === "leftp") {
+            pos++;
+            let inner = null;
+            if (lexer[pos] && lexer[pos].type !== "rightp") {
+              inner = parseExpr();
+            }
+            if (!lexer[pos] || lexer[pos].type !== "rightp") {
+              parseError("expected )");
+            }
+            pos++;
+            return { type: "group", value: inner };
+          }
+          const t = lexer[pos++];
+          if (isStmtStart(t.type)) {
+            parseError("unexpected " + t.value);
+          }
+          return { type: t.type, value: t.value };
+        }
+      }
+
+      refreshTypeAnnotations();
+    </script>
+  </body>
+</html>

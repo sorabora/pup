@@ -1,0 +1,493 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Online Parser</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.43.3/ace.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.43.3/theme-monokai.min.js"></script>
+    <script src="custom-mode.js"></script>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+    />
+    <style>
+      body {
+        background: #1e1e1e;
+        color: #d4d4d4;
+        font-family: "Nunito", sans-serif;
+      }
+      #editor {
+        width: 100%;
+        height: 280px;
+        border: 1px solid #444;
+      }
+      #output-panel {
+        background: #252526;
+        color: #d4d4d4;
+        padding: 8px;
+        border: 1px solid #444;
+      }
+      #output-log {
+        margin: 0 0 8px;
+        white-space: pre-wrap;
+      }
+      #commandline {
+        width: 100%;
+        box-sizing: border-box;
+        background: #1e1e1e;
+        color: #d4d4d4;
+        border: 1px solid #444;
+        padding: 4px 8px;
+      }
+      .example-editor {
+        border: 1px solid #444;
+        border-radius: 6px;
+        overflow: hidden;
+        margin-bottom: 1rem;
+      }
+      .doc-section-card {
+        background: #252526;
+        border: 1px solid #444;
+        color: #d4d4d4;
+        margin-bottom: 1.5rem;
+      }
+      .doc-section-card .card-body {
+        padding: 1.25rem 1.5rem;
+      }
+      .doc-section-card h3 {
+        margin-top: 0;
+        margin-bottom: 1rem;
+        font-size: 1.25rem;
+        text-transform: capitalize;
+      }
+      .doc-section-card p:last-of-type {
+        margin-bottom: 0;
+      }
+      #doc-search {
+        background: #252526;
+        color: #d4d4d4;
+        border: 1px solid #444;
+      }
+      #doc-search::placeholder {
+        color: #888;
+      }
+      #doc-search:focus {
+        background: #252526;
+        color: #d4d4d4;
+        border-color: #569cd6;
+        box-shadow: 0 0 0 0.2rem rgba(86, 156, 214, 0.25);
+      }
+      #doc-search-empty {
+        color: #888;
+      }
+    </style>
+  </head>
+  <body>
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.7/dist/js/bootstrap.bundle.min.js"></script>
+    <div class="container mt-4">
+      <h1>
+        <a href="index.html">Pup Online Transpiler</a> / Language Documentation
+      </h1>
+      <div class="row">
+        <div class="col-8">
+          <button
+            onclick="window.open('documentation.html', '_blank')"
+            class="btn btn-secondary"
+          >
+            Language Documentation
+          </button>
+          <button
+            onclick="window.open('modules.html', '_blank')"
+            class="btn btn-secondary"
+          >
+            Modules Documentation
+          </button>
+        </div>
+      </div>
+    </div>
+    <div class="container mt-4">
+      <div id="result"></div>
+      <div class="row">
+        <aside class="col-lg-3">
+          <div class="position-sticky top-0 pt-3">
+            <div class="card mb-3 border-secondary" data-bs-theme="dark">
+              <div class="card-header">Topics</div>
+              <div class="card-body p-2">
+                <nav aria-label="Documentation topics">
+                  <ul
+                    class="nav nav-pills flex-column"
+                    id="doc-sidebar-list"
+                  ></ul>
+                </nav>
+              </div>
+            </div>
+          </div>
+        </aside>
+        <main class="col-lg-9">
+          <div class="mb-3">
+            <label for="doc-search" class="form-label visually-hidden"
+              >search topics</label
+            >
+            <input
+              type="search"
+              id="doc-search"
+              class="form-control"
+              placeholder="search topics..."
+              autocomplete="off"
+            />
+          </div>
+          <p id="doc-search-empty" class="d-none mb-3">
+            No topics match your search.
+          </p>
+          <div class="card doc-section-card" data-topic="variables">
+            <div class="card-body">
+              <h2 id="variables">variables</h2>
+              <p>
+                You can declare variables by using the
+                <code>local</code> keyword.
+              </p>
+              <pre class="example-editor">
+local x = 10
+// no semi colons are needed
+          </pre
+              >
+              <p>Which can be set to new values</p>
+              <pre class="example-editor">
+local x = 10
+x = 20
+          </pre
+              >
+              <p>
+                But if you want to do operations on them like addition,
+                subtraction, etc you can do this
+              </p>
+              <pre class="example-editor">
+local x = 10
+x += 1
+/*
+x += 1
+x -= 1
+x *= 1
+x /= 1
+*/
+// would output 11...
+          </pre
+              >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="operators">
+            <div class="card-body">
+              <h2 id="operators">operators</h2>
+              <p>Operators are used to perform operations on variables.</p>
+              <pre class="example-editor">
+local x = (5 / 10) * 5 + 2
+// would output 4.5
+          </pre
+              >
+            </div>
+          </div>
+          <div
+            class="card doc-section-card"
+            data-topic="conditional-statements"
+          >
+            <div class="card-body">
+              <h2 id="conditional-statements">conditional statements</h2>
+              <p>
+                Conditional statements are used to check if a condition is true
+                or false, then execute that code inside the block.
+              </p>
+              <pre class="example-editor">
+local x = 9
+if x > 10:
+  print("x is greater than 10")
+else:
+  print("x is less than or equal to 10")
+end
+          </pre
+              >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="functions">
+            <div class="card-body">
+              <h2 id="functions">functions</h2>
+              <p>Functions are used to group code together and reuse it.</p>
+              <pre class="example-editor">
+function add(a, b):
+  return a + b
+end
+
+add(1, 2) // would output 3
+          </pre
+              >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="loops">
+            <div class="card-body">
+              <h2 id="loops">loops</h2>
+              <p>Loops are used to repeat code multiple times.</p>
+              <pre class="example-editor">
+for i = 0, 100, 10:
+  // 0 to 100... increment by 10 each time
+end
+          </pre
+              >
+              <p>While loops too</p>
+              <pre class="example-editor">
+local x = 0
+
+while x < 5:
+  x ++
+  // increments
+end
+          </pre
+              >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="data">
+            <div class="card-body">
+              <h2 id="json">data</h2>
+              <p>
+                JSON is a data format that is used to store and transfer data,
+                it is used in this programming language.
+              </p>
+              <pre class="example-editor">
+local x = {
+  name = "John",
+  age = 30
+}
+
+// you can change the values after with:
+x.age = 31
+
+// arrays are also supported
+
+local y = [
+  "apple",
+  "banana",
+  "cherry"
+]
+          </pre
+              >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="comparisons">
+            <div class="card-body">
+              <h2 id="comparisons">comparisons</h2>
+              <p>
+                Comparisons are used to compare two values and return a boolean
+                value.
+              </p>
+              <pre class="example-editor">
+include console
+
+local x = 10
+local y = 20
+
+if x > y:
+  print("x is greater than y")
+end
+
+if x < y:
+  print("x is less than y")
+end
+
+if x == y:
+  print("x is equal to y")
+end
+
+if x != y:
+  print("x is not equal to y")
+end
+
+if x >= y:
+  print("x is greater than or equal to y")
+end
+
+if x <= y:
+  print("x is less than or equal to y")
+end
+
+if x != y:
+  print("x is not equal to y")
+end
+          </pre
+              >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="logical">
+            <div class="card-body">
+              <h2 id="logical-operators">logical operators</h2>
+              <p>Logical operators are used to combine multiple conditions.</p>
+              <pre class="example-editor">
+include console
+
+local x = 10
+local y = 20
+
+if x > y and x < 30:
+  print("x is greater than y and less than 30")
+end
+
+if x > y or x < 30:
+  print("x is greater than y or less than 30")
+end
+
+if not x > y:
+  print("x is not greater than y")
+end
+
+if x > y && x < 30:
+  print("x is greater than y and less than 30")
+end
+
+if x > y || x < 30:
+  print("x is greater than y or less than 30")
+end
+
+if !(x > y):
+  print("x is not greater than y")
+end
+          </pre
+              >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="constructors">
+            <div class="card-body">
+              <h2 id="constructors">constructors</h2>
+              <p>Constructors are used to reference custom data types.</p>
+              <pre class="example-editor">
+include game
+
+local player = new Vector2(10, 20)
+// "vector2" is a custom data type in this example, provided by the game module.
+          </pre
+              >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="include">
+            <div class="card-body">
+              <h2 id="include">include</h2>
+              <p>Include is used to include a module in the current script.</p>
+              <pre class="example-editor">
+include console
+include game
+
+print("Hello, world!")
+// this is only available in the console module, so you need to include it.
+
+local player = new Vector2(10, 20)
+// "vector2" is a custom data type in this example, provided by the game module.
+          </pre
+              >
+            </div>
+          </div>
+        </main>
+      </div>
+    </div>
+    <script>
+      const docSearch = document.getElementById("doc-search");
+      const docSearchEmpty = document.getElementById("doc-search-empty");
+      const docSections = document.querySelectorAll(".doc-section-card");
+      const sidebarList = document.getElementById("doc-sidebar-list");
+      const sidebarLinks = [];
+
+      docSections.forEach((section) => {
+        const heading = section.querySelector("h2[id]");
+        if (!heading) return;
+
+        const li = document.createElement("li");
+        li.className = "nav-item";
+        li.dataset.sectionId = heading.id;
+
+        const link = document.createElement("a");
+        link.className = "nav-link";
+        link.href = "#" + heading.id;
+        link.textContent = heading.textContent.trim();
+        li.appendChild(link);
+        sidebarList.appendChild(li);
+        sidebarLinks.push(link);
+      });
+
+      function filterDocTopics() {
+        const query = docSearch.value.trim().toLowerCase();
+        let visible = 0;
+
+        docSections.forEach((section) => {
+          const topic = (section.dataset.topic || "").toLowerCase();
+          const text = section.textContent.toLowerCase();
+          const match = !query || topic.includes(query) || text.includes(query);
+          section.classList.toggle("d-none", !match);
+          if (match) visible++;
+        });
+
+        sidebarList.querySelectorAll(".nav-item").forEach((item) => {
+          const section = document
+            .getElementById(item.dataset.sectionId)
+            ?.closest(".doc-section-card");
+          item.classList.toggle(
+            "d-none",
+            !section || section.classList.contains("d-none"),
+          );
+        });
+
+        docSearchEmpty.classList.toggle("d-none", visible > 0 || !query);
+      }
+
+      docSearch.addEventListener("input", filterDocTopics);
+
+      const sectionHeadings = [
+        ...document.querySelectorAll(".doc-section-card h2[id]"),
+      ];
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((e) => e.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          if (!visible) return;
+          const id = visible.target.id;
+          sidebarLinks.forEach((link) => {
+            link.classList.toggle(
+              "active",
+              link.getAttribute("href") === "#" + id,
+            );
+          });
+        },
+        { rootMargin: "-20% 0px -70% 0px", threshold: [0, 0.25, 0.5, 1] },
+      );
+      sectionHeadings.forEach((h) => observer.observe(h));
+
+      document.querySelectorAll(".example-editor").forEach((el, i) => {
+        const code = el.textContent.trim();
+        el.textContent = "";
+        el.id = "example-" + i;
+        const editor = ace.edit(el.id);
+        editor.setTheme("ace/theme/monokai");
+        editor.session.setMode("ace/mode/pup");
+        editor.setValue(code, -1);
+        editor.setReadOnly(true);
+
+        editor.setOptions({
+          showPrintMargin: false,
+          highlightActiveLine: false,
+          highlightGutterLine: false,
+          highlightSelectedWord: false,
+          showLineNumbers: false,
+          showGutter: false,
+          displayIndentGuides: false,
+          behavioursEnabled: false,
+          animatedScroll: false,
+          wrap: true,
+        });
+        editor.renderer.setShowGutter(false);
+        editor.renderer.$cursorLayer.element.style.display = "none";
+
+        const lineHeight = editor.renderer.lineHeight;
+        const lines = editor.session.getScreenLength();
+        editor.container.style.height =
+          lines * lineHeight + editor.renderer.scrollBar.getWidth() + "px";
+        editor.resize();
+      });
+    </script>
+  </body>
+</html>
