@@ -203,7 +203,7 @@ local Vector2 opPosition = new Vector2(width-60, height/2)
 local int pscore = 0
 local int oscore = 0
 
-local array difficultyOptions = enums.createEnum(["Easy", "Medium", "Hard"])
+local any difficultyOptions = enums.createEnum(["Easy", "Medium", "Hard"])
 local any difficulty = new Enum(difficultyOptions, "Easy") // change difficulty here
 local double difficultyValue = -2
 
