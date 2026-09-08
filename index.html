@@ -6,6 +6,7 @@
     <title>Online Parser</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.43.3/ace.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/ace/1.43.3/theme-monokai.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <script src="custom-mode.js"></script>
     <script src="examples.js"></script>
     <script src="bundle-runtime.js"></script>
@@ -52,6 +53,19 @@
       }
       #pup-htmlapp-host:empty {
         display: none;
+      }
+      .file-tree,
+      .file-tree ul {
+        padding-left: 1rem;
+      }
+      .file-tree {
+        padding-left: 0.25rem;
+      }
+      .file-tree-row.active {
+        background: #094771;
+      }
+      .file-tree-name[contenteditable="true"] {
+        outline: 1px solid #0d6efd;
       }
     </style>
   </head>
@@ -133,40 +147,110 @@
           </button>
         </div>
       </div>
-      <div id="editor"></div>
-      <div class="btn-group ms-2">
-        <button
-          type="button"
-          class="btn btn-outline-secondary dropdown-toggle"
-          data-bs-toggle="dropdown"
-          aria-expanded="false"
-          id="transpile-target-label"
-        >
-          Transpile: Browser
-        </button>
-        <ul
-          class="dropdown-menu dropdown-menu-dark"
-          id="transpile-target-menu"
-          data-bs-theme="dark"
-        >
-          <li>
-            <a class="dropdown-item active" href="#" data-target="browser"
-              >Browser</a
+      <div class="row">
+        <div class="col-3">
+          <div class="border rounded">
+            <div
+              class="d-flex align-items-center gap-1 p-1 border-bottom"
             >
-          </li>
-          <li>
-            <a class="dropdown-item" href="#" data-target="nodejs">Node.js</a>
-          </li>
-          <li>
-            <a class="dropdown-item" href="#" data-target="html">HTML</a>
-          </li>
-        </ul>
+              <span class="flex-fill fw-semibold small ps-1">Files</span>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary"
+                id="fs-new-file"
+                title="New file"
+              >
+                + File
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary"
+                id="fs-new-folder"
+                title="New folder"
+              >
+                + Folder
+              </button>
+            </div>
+            <ul
+              id="file-tree"
+              class="file-tree list-unstyled mb-0 p-1"
+              style="height: 240px; overflow-y: auto"
+            ></ul>
+            <div class="p-1 border-top d-flex gap-1">
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary flex-fill"
+                id="fs-export-zip"
+                title="Download the whole project as a .zip file"
+              >
+                Export .zip
+              </button>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-secondary flex-fill"
+                id="fs-import-zip"
+                title="Replace the project with the contents of a .zip file"
+              >
+                Import .zip
+              </button>
+              <input
+                type="file"
+                id="fs-import-zip-input"
+                accept=".zip"
+                class="d-none"
+              />
+            </div>
+            <div class="p-1 border-top">
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-danger w-100"
+                id="fs-reset-project"
+                title="Delete all files and restore the default project"
+              >
+                Reset Project
+              </button>
+            </div>
+          </div>
+        </div>
+        <div class="col-9">
+          <div id="editor"></div>
+          <div class="btn-group ms-2">
+            <button
+              type="button"
+              class="btn btn-outline-secondary dropdown-toggle"
+              data-bs-toggle="dropdown"
+              aria-expanded="false"
+              id="transpile-target-label"
+            >
+              Transpile: Browser
+            </button>
+            <ul
+              class="dropdown-menu dropdown-menu-dark"
+              id="transpile-target-menu"
+              data-bs-theme="dark"
+            >
+              <li>
+                <a class="dropdown-item active" href="#" data-target="browser"
+                  >Browser</a
+                >
+              </li>
+              <li>
+                <a class="dropdown-item" href="#" data-target="nodejs"
+                  >Node.js</a
+                >
+              </li>
+              <li>
+                <a class="dropdown-item" href="#" data-target="html">HTML</a>
+              </li>
+            </ul>
+          </div>
+          <button id="run" class="btn btn-primary">Run</button>
+          <button id="parse" class="btn btn-secondary">Parse</button>
+          <button id="download-js" class="btn btn-success" disabled>
+            Download JS
+          </button>
+        </div>
       </div>
-      <button id="run" class="btn btn-primary">Run</button>
-      <button id="parse" class="btn btn-secondary">Parse</button>
-      <button id="download-js" class="btn btn-success" disabled>
-        Download JS
-      </button>
     </div>
     <div class="container mt-4">
       <div id="result"></div>
@@ -282,18 +366,127 @@
         });
       })();
 
-      const key = "pup-editor-code";
+      const legacyEditorKey = "pup-editor-code";
+      const fsStorageKey = "pup-fs-v1";
+      const activeStorageKey = "pup-fs-active";
       const defaultCode = pupExamples[0]?.code ?? "";
+
+      function defaultFs() {
+        return {
+          "main.pup": {
+            type: "file",
+            content: localStorage.getItem(legacyEditorKey) ?? defaultCode,
+          },
+          "config.json": {
+            type: "file",
+            content:
+              JSON.stringify(
+                {
+                  name: "pup-project",
+                  entry: "main.pup",
+                  obfuscateOutput: true,
+                },
+                null,
+                2,
+              ) + "\n",
+          },
+        };
+      }
+
+      function loadFs() {
+        try {
+          const raw = localStorage.getItem(fsStorageKey);
+          if (raw) return JSON.parse(raw);
+        } catch (e) {}
+        return defaultFs();
+      }
+
+      let fsRoot = loadFs();
+      let activePath = localStorage.getItem(activeStorageKey) || "main.pup";
+      if (!getNode(activePath)) {
+        activePath = findFirstFile() || "main.pup";
+        if (!getNode(activePath)) fsRoot[activePath] = { type: "file", content: "" };
+      }
+      const expandedFolders = new Set();
+
+      function saveFs() {
+        localStorage.setItem(fsStorageKey, JSON.stringify(fsRoot));
+      }
+
+      function splitPath(path) {
+        return path.split("/").filter(Boolean);
+      }
+
+      function getParentChildren(path) {
+        const parts = splitPath(path);
+        const name = parts.pop();
+        let children = fsRoot;
+        for (const part of parts) {
+          const node = children[part];
+          if (!node || node.type !== "folder") return null;
+          children = node.children;
+        }
+        return { children, name };
+      }
+
+      function getNode(path) {
+        const res = getParentChildren(path);
+        if (!res) return null;
+        return res.children[res.name] || null;
+      }
+
+      function findFirstFile(children = fsRoot, prefix = "") {
+        const names = Object.keys(children).sort();
+        for (const name of names) {
+          if (children[name].type === "file") return prefix + name;
+        }
+        for (const name of names) {
+          const node = children[name];
+          if (node.type === "folder") {
+            const found = findFirstFile(node.children, prefix + name + "/");
+            if (found) return found;
+          }
+        }
+        return null;
+      }
+
+      function expandAncestors(path) {
+        const parts = splitPath(path);
+        parts.pop();
+        let acc = "";
+        for (const part of parts) {
+          acc = acc ? acc + "/" + part : part;
+          expandedFolders.add(acc);
+        }
+      }
+      expandAncestors(activePath);
+
+      function validateName(name) {
+        return !!name && !/[\/\\]/.test(name);
+      }
+
+      function deepClone(node) {
+        if (node.type === "file") return { type: "file", content: node.content };
+        const children = {};
+        for (const [k, v] of Object.entries(node.children)) {
+          children[k] = deepClone(v);
+        }
+        return { type: "folder", children };
+      }
 
       const editor = ace.edit("editor");
       editor.setTheme("ace/theme/monokai");
-      editor.session.setMode("ace/mode/pup");
       editor.session.setTabSize(2);
       editor.session.setUseSoftTabs(true);
-      editor.setValue(localStorage.getItem(key) ?? defaultCode, -1);
+      editor.session.setMode("ace/mode/pup");
+      editor.setValue(getNode(activePath)?.content ?? "", -1);
 
       let typeWarnTimer = null;
       function refreshTypeAnnotations() {
+        if (!activePath.endsWith(".pup")) {
+          editor.session.setAnnotations([]);
+          return;
+        }
         try {
           const lexer = tokenizePupSource(editor.getValue());
           const ast = createAst(lexer);
@@ -304,10 +497,378 @@
       }
 
       editor.session.on("change", () => {
-        localStorage.setItem(key, editor.getValue());
+        const node = getNode(activePath);
+        if (node && node.type === "file") {
+          node.content = editor.getValue();
+          saveFs();
+        }
         clearTimeout(typeWarnTimer);
         typeWarnTimer = setTimeout(refreshTypeAnnotations, 500);
       });
+
+      function setActiveFile(path) {
+        const node = getNode(path);
+        if (!node || node.type !== "file") return;
+        activePath = path;
+        localStorage.setItem(activeStorageKey, activePath);
+        editor.setValue(node.content ?? "", -1);
+        editor.focus();
+        expandAncestors(activePath);
+        renderTree();
+      }
+
+      function createEntry(parentPath, type) {
+        const parentNode = parentPath ? getNode(parentPath) : null;
+        const children = parentNode ? parentNode.children : fsRoot;
+        let name = window.prompt(
+          type === "file" ? "File name" : "Folder name",
+        );
+        if (name == null) return;
+        name = name.trim();
+        if (!validateName(name)) {
+          alert("Invalid name");
+          return;
+        }
+        if (children[name]) {
+          alert('"' + name + '" already exists here');
+          return;
+        }
+        if (type === "file") {
+          children[name] = { type: "file", content: "" };
+        } else {
+          children[name] = { type: "folder", children: {} };
+        }
+        if (parentPath) expandedFolders.add(parentPath);
+        saveFs();
+        if (type === "file") {
+          setActiveFile((parentPath ? parentPath + "/" : "") + name);
+        } else {
+          renderTree();
+        }
+      }
+
+      function renamePath(path) {
+        const res = getParentChildren(path);
+        if (!res) return;
+        const { children, name } = res;
+        let newName = window.prompt("Rename to", name);
+        if (newName == null) return;
+        newName = newName.trim();
+        if (newName === name) return;
+        if (!validateName(newName)) {
+          alert("Invalid name");
+          return;
+        }
+        if (children[newName]) {
+          alert('"' + newName + '" already exists here');
+          return;
+        }
+        children[newName] = children[name];
+        delete children[name];
+        saveFs();
+
+        const parentPrefix = path.slice(0, path.length - name.length);
+        const newPath = parentPrefix + newName;
+        if (activePath === path) {
+          activePath = newPath;
+          localStorage.setItem(activeStorageKey, activePath);
+        } else if (activePath.startsWith(path + "/")) {
+          activePath = newPath + activePath.slice(path.length);
+          localStorage.setItem(activeStorageKey, activePath);
+        }
+        if (expandedFolders.has(path)) {
+          expandedFolders.delete(path);
+          expandedFolders.add(newPath);
+        }
+        renderTree();
+      }
+
+      function duplicatePath(path) {
+        const res = getParentChildren(path);
+        if (!res) return;
+        const { children, name } = res;
+        const node = children[name];
+        const dotIdx = name.lastIndexOf(".");
+        const hasExt = node.type === "file" && dotIdx > 0;
+        const base = hasExt ? name.slice(0, dotIdx) : name;
+        const ext = hasExt ? name.slice(dotIdx) : "";
+        let candidate = base + " copy" + ext;
+        let i = 2;
+        while (children[candidate]) {
+          candidate = base + " copy " + i + ext;
+          i++;
+        }
+        children[candidate] = deepClone(node);
+        saveFs();
+        renderTree();
+      }
+
+      function deletePath(path) {
+        const res = getParentChildren(path);
+        if (!res) return;
+        const { children, name } = res;
+        const node = children[name];
+        const label = node.type === "folder" ? "folder" : "file";
+        if (!confirm('Delete ' + label + ' "' + name + '"?')) return;
+        delete children[name];
+        expandedFolders.delete(path);
+        saveFs();
+
+        const wasActive =
+          activePath === path || activePath.startsWith(path + "/");
+        if (wasActive) {
+          let fallback = findFirstFile();
+          if (!fallback) {
+            fsRoot["main.pup"] = { type: "file", content: "" };
+            fallback = "main.pup";
+            saveFs();
+          }
+          setActiveFile(fallback);
+        } else {
+          renderTree();
+        }
+      }
+
+      function renderRow(path, name, node) {
+        const row = document.createElement("div");
+        row.className =
+          "d-flex align-items-center gap-1 px-1 rounded file-tree-row" +
+          (path === activePath ? " active" : "");
+        row.dataset.path = path;
+        row.dataset.type = node.type;
+
+        const toggle = document.createElement("span");
+        toggle.className = "text-center d-inline-block";
+        toggle.style.width = "1rem";
+        toggle.textContent =
+          node.type === "folder"
+            ? expandedFolders.has(path)
+              ? "▾"
+              : "▸"
+            : "";
+        row.appendChild(toggle);
+
+        const nameSpan = document.createElement("span");
+        nameSpan.className = "file-tree-name flex-fill text-truncate";
+        nameSpan.style.cursor = "pointer";
+        nameSpan.textContent = name;
+        row.appendChild(nameSpan);
+
+        const dropdownWrap = document.createElement("div");
+        dropdownWrap.className = "dropdown";
+        dropdownWrap.innerHTML =
+          '<button class="btn btn-sm btn-link text-decoration-none p-0 px-1 text-secondary" data-bs-toggle="dropdown" aria-expanded="false" title="Actions">&#8942;</button>' +
+          '<ul class="dropdown-menu dropdown-menu-dark dropdown-menu-end" data-bs-theme="dark">' +
+          (node.type === "folder"
+            ? '<li><a class="dropdown-item" href="#" data-action="new-file">New File</a></li>' +
+              '<li><a class="dropdown-item" href="#" data-action="new-folder">New Folder</a></li>' +
+              '<li><hr class="dropdown-divider"></li>'
+            : "") +
+          '<li><a class="dropdown-item" href="#" data-action="rename">Rename</a></li>' +
+          '<li><a class="dropdown-item" href="#" data-action="duplicate">Duplicate</a></li>' +
+          '<li><a class="dropdown-item text-danger" href="#" data-action="delete">Delete</a></li>' +
+          "</ul>";
+        row.appendChild(dropdownWrap);
+
+        return row;
+      }
+
+      function renderChildren(children, prefix) {
+        const frag = document.createDocumentFragment();
+        const names = Object.keys(children).sort((a, b) => {
+          const na = children[a],
+            nb = children[b];
+          if (na.type !== nb.type) return na.type === "folder" ? -1 : 1;
+          return a.localeCompare(b, undefined, { sensitivity: "base" });
+        });
+        for (const name of names) {
+          const node = children[name];
+          const path = prefix + name;
+          const li = document.createElement("li");
+          li.appendChild(renderRow(path, name, node));
+          if (node.type === "folder") {
+            const ul = document.createElement("ul");
+            ul.className = "list-unstyled";
+            if (!expandedFolders.has(path)) ul.classList.add("d-none");
+            ul.appendChild(renderChildren(node.children, path + "/"));
+            li.appendChild(ul);
+          }
+          frag.appendChild(li);
+        }
+        return frag;
+      }
+
+      function renderTree() {
+        const root = document.getElementById("file-tree");
+        root.innerHTML = "";
+        root.appendChild(renderChildren(fsRoot, ""));
+      }
+
+      document.getElementById("file-tree").addEventListener("click", (e) => {
+        const actionEl = e.target.closest("[data-action]");
+        const row = e.target.closest(".file-tree-row");
+        if (!row) return;
+        const path = row.dataset.path;
+
+        if (actionEl) {
+          e.preventDefault();
+          const action = actionEl.dataset.action;
+          if (action === "rename") renamePath(path);
+          else if (action === "duplicate") duplicatePath(path);
+          else if (action === "delete") deletePath(path);
+          else if (action === "new-file") createEntry(path, "file");
+          else if (action === "new-folder") createEntry(path, "folder");
+          return;
+        }
+
+        if (e.target.closest(".dropdown")) return;
+
+        if (row.dataset.type === "folder") {
+          if (expandedFolders.has(path)) expandedFolders.delete(path);
+          else expandedFolders.add(path);
+          renderTree();
+        } else {
+          setActiveFile(path);
+        }
+      });
+
+      document
+        .getElementById("fs-new-file")
+        .addEventListener("click", () => createEntry("", "file"));
+      document
+        .getElementById("fs-new-folder")
+        .addEventListener("click", () => createEntry("", "folder"));
+
+      function resetProject() {
+        if (
+          !confirm(
+            "Reset project? This deletes all files and folders and restores main.pup and config.json.",
+          )
+        ) {
+          return;
+        }
+        localStorage.removeItem(legacyEditorKey);
+        fsRoot = defaultFs();
+        expandedFolders.clear();
+        saveFs();
+        activePath = "main.pup";
+        localStorage.setItem(activeStorageKey, activePath);
+        editor.setValue(getNode(activePath)?.content ?? "", -1);
+        editor.focus();
+        renderTree();
+      }
+
+      document
+        .getElementById("fs-reset-project")
+        .addEventListener("click", resetProject);
+
+      function collectFilesFlat(children, prefix, out) {
+        for (const [name, node] of Object.entries(children)) {
+          const path = prefix + name;
+          if (node.type === "file") {
+            out.push({ path, content: node.content });
+          } else {
+            collectFilesFlat(node.children, path + "/", out);
+          }
+        }
+      }
+
+      async function exportProjectZip() {
+        if (typeof JSZip === "undefined") {
+          alert("Zip support failed to load — check your connection and reload the page.");
+          return;
+        }
+        const files = [];
+        collectFilesFlat(fsRoot, "", files);
+        const zip = new JSZip();
+        for (const f of files) {
+          zip.file(f.path, f.content);
+        }
+        const blob = await zip.generateAsync({ type: "blob" });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = "pup-project.zip";
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      async function importProjectZip(file) {
+        if (typeof JSZip === "undefined") {
+          alert("Zip support failed to load — check your connection and reload the page.");
+          return;
+        }
+        if (
+          !confirm(
+            "Import project? This replaces all current files and folders with the contents of the zip.",
+          )
+        ) {
+          return;
+        }
+        let zip;
+        try {
+          zip = await JSZip.loadAsync(file);
+        } catch (e) {
+          alert("That doesn't look like a valid .zip file.");
+          return;
+        }
+        const newRoot = {};
+        for (const entry of Object.values(zip.files)) {
+          if (entry.dir) continue;
+          const parts = entry.name.split("/").filter(Boolean);
+          if (parts.length === 0) continue;
+          const content = await entry.async("string");
+          let children = newRoot;
+          for (let i = 0; i < parts.length - 1; i++) {
+            const part = parts[i];
+            if (!children[part] || children[part].type !== "folder") {
+              children[part] = { type: "folder", children: {} };
+            }
+            children = children[part].children;
+          }
+          children[parts[parts.length - 1]] = { type: "file", content };
+        }
+        if (Object.keys(newRoot).length === 0) {
+          alert("That zip file doesn't contain any files.");
+          return;
+        }
+        fsRoot = newRoot;
+        expandedFolders.clear();
+        saveFs();
+        activePath = getNode("main.pup") ? "main.pup" : findFirstFile();
+        if (!activePath) {
+          fsRoot["main.pup"] = { type: "file", content: "" };
+          activePath = "main.pup";
+          saveFs();
+        }
+        localStorage.setItem(activeStorageKey, activePath);
+        editor.setValue(getNode(activePath)?.content ?? "", -1);
+        editor.focus();
+        expandAncestors(activePath);
+        renderTree();
+      }
+
+      document
+        .getElementById("fs-export-zip")
+        .addEventListener("click", () => {
+          exportProjectZip();
+        });
+
+      const importZipInput = document.getElementById("fs-import-zip-input");
+      document
+        .getElementById("fs-import-zip")
+        .addEventListener("click", () => {
+          importZipInput.value = "";
+          importZipInput.click();
+        });
+      importZipInput.addEventListener("change", () => {
+        const file = importZipInput.files && importZipInput.files[0];
+        if (file) importProjectZip(file);
+      });
+
+      renderTree();
 
       const examplesMenu = document.getElementById("examples-menu");
       for (const example of pupExamples) {
@@ -320,7 +881,6 @@
           e.preventDefault();
           editor.setValue(example.code, -1);
           editor.focus();
-          localStorage.setItem(key, example.code);
         });
         item.appendChild(link);
         examplesMenu.appendChild(item);
@@ -373,7 +933,7 @@
       }
 
       const defaultApi = {
-        wait(seconds) {
+        async wait(seconds) {
           const runGen = pupRunGeneration;
           const ms = Number(seconds) * 1000;
           if (!Number.isFinite(ms) || ms < 0) {
@@ -443,6 +1003,18 @@
         },
       };
       const baseApiNames = new Set(Object.keys(defaultApi));
+      function isAsyncFunction(fn) {
+        return (
+          typeof fn === "function" &&
+          fn.constructor &&
+          fn.constructor.name === "AsyncFunction"
+        );
+      }
+      const baseAsyncApiNames = new Set(
+        Object.entries(defaultApi)
+          .filter(([, v]) => isAsyncFunction(v))
+          .map(([k]) => k),
+      );
       function add(a, b) {
         if (typeof a === "string" || typeof b === "string") {
           return String(a) + String(b);
@@ -761,7 +1333,7 @@
       function createHtmlAppModule() {
         const hostId = "pup-htmlapp-host";
 
-        function buildExportDocument(html, title) {
+        function buildExportDocument(html, title, css) {
           const safeTitle = String(title ?? "Pup App")
             .replace(/</g, "&lt;")
             .replace(/>/g, "&gt;");
@@ -772,7 +1344,9 @@
             "  <title>" +
             safeTitle +
             "</title>\n" +
-            "  <style>body{font-family:system-ui,sans-serif;margin:0;padding:1.5rem;}</style>\n" +
+            "  <style>body{font-family:system-ui,sans-serif;margin:0;padding:1.5rem;}\n" +
+            String(css ?? "") +
+            "</style>\n" +
             "</head>\n<body>\n" +
             String(html) +
             "\n</body>\n</html>"
@@ -874,12 +1448,23 @@
           setTitle(title) {
             document.title = String(title);
           },
-          export(html, title) {
-            return buildExportDocument(html, title);
+          style(cssText) {
+            const styleId = "pup-htmlapp-style";
+            let styleEl = document.getElementById(styleId);
+            if (!styleEl) {
+              styleEl = document.createElement("style");
+              styleEl.id = styleId;
+              document.head.appendChild(styleEl);
+            }
+            styleEl.textContent = String(cssText ?? "");
+            return styleEl;
           },
-          download(html, filename, title) {
+          export(html, title, css) {
+            return buildExportDocument(html, title, css);
+          },
+          download(html, filename, title, css) {
             const name = String(filename ?? "app.html");
-            const doc = buildExportDocument(html, title);
+            const doc = buildExportDocument(html, title, css);
             const blob = new Blob([doc], {
               type: "text/html;charset=utf-8",
             });
@@ -900,13 +1485,13 @@
             log.textContent +=
               args.map((a) => formatPrintValue(a)).join(" ") + "\n";
           },
-          ask(...args) {
+          async ask(...args) {
             return promptInput(...args).then((value) => {
               document.getElementById("output-log").textContent += value + "\n";
               return value;
             });
           },
-          dialog(...args) {
+          async dialog(...args) {
             return promptInput(...args);
           },
         },
@@ -1149,6 +1734,7 @@
             return enumConstructor;
           },
         },
+        html: createHtmlModule(),
         htmlapp: createHtmlAppModule(),
         ssr: {
           pupRequiresNode: true,
@@ -1193,17 +1779,20 @@
       const moduleNames = new Set(Object.keys(builtInModules));
       const allModuleExports = new Set();
       for (const mod of Object.values(builtInModules)) {
+        const exp = resolveModule(mod);
+        if (exp && exp.pupNamespaceOnly) continue;
         if (mod.pupModule) {
           for (const k of mod.exposeGlobals || []) {
             allModuleExports.add(k);
           }
         }
-        for (const k of Object.keys(resolveModule(mod))) {
+        for (const k of Object.keys(exp)) {
           allModuleExports.add(k);
         }
       }
 
       let activeApiNames = new Set();
+      let asyncApiNames = new Set();
       let declaredNames = new Set();
       let currentAst = null;
       const typeOwners = {};
@@ -1255,17 +1844,14 @@
 
       function mergeModuleExports(api, modName) {
         const exp = resolveModule(builtInModules[modName]);
+        const namespaceOnly = !!exp.pupNamespaceOnly;
         const namespace = {};
         for (const k of Object.keys(exp)) {
           const v = exp[k];
-          if (typeof v === "function" && v.pupType) {
-            api[k] = v;
-            namespace[k] = v;
-          } else {
-            const wrapped = wrapNativeExports(v);
-            api[k] = wrapped;
-            namespace[k] = wrapped;
-          }
+          const wrapped =
+            typeof v === "function" && v.pupType ? v : wrapNativeExports(v);
+          namespace[k] = wrapped;
+          if (!namespaceOnly) api[k] = wrapped;
         }
         if (!Object.prototype.hasOwnProperty.call(exp, modName)) {
           api[modName] = wrapNativeExports(namespace);
@@ -1340,10 +1926,31 @@
         return false;
       }
 
+      function computeAsyncApiNames(ast) {
+        const names = new Set(baseAsyncApiNames);
+        if (config.allowInclude !== false) {
+          const includes = [];
+          collectIncludes(ast.stmts, includes);
+          const loaded = new Set();
+          for (const name of includes) {
+            if (loaded.has(name)) continue;
+            loaded.add(name);
+            const mod = builtInModules[name];
+            if (!mod) continue;
+            const exp = resolveModule(mod);
+            for (const k of Object.keys(exp)) {
+              if (isAsyncFunction(exp[k])) names.add(k);
+            }
+          }
+        }
+        return names;
+      }
+
       function setActiveApi(ast) {
         currentAst = ast;
         const api = buildApi(ast);
         activeApiNames = new Set(Object.keys(api));
+        asyncApiNames = computeAsyncApiNames(ast);
       }
 
       function createApi(extra) {
@@ -1414,6 +2021,111 @@
           .replace(/&/g, "&amp;")
           .replace(/</g, "&lt;")
           .replace(/>/g, "&gt;");
+      }
+
+      function escapeHtmlAttr(text) {
+        return escapeHtml(text).replace(/"/g, "&quot;");
+      }
+
+      const voidHtmlTags = new Set([
+        "area",
+        "base",
+        "br",
+        "col",
+        "embed",
+        "hr",
+        "img",
+        "input",
+        "link",
+        "meta",
+        "param",
+        "source",
+        "track",
+        "wbr",
+      ]);
+
+      function flattenHtmlChildren(children) {
+        if (children == null) return "";
+        if (Array.isArray(children)) {
+          return children.map(flattenHtmlChildren).join("");
+        }
+        return String(children);
+      }
+
+      function createHtmlModule() {
+        function el(tag, attrs, children) {
+          const name = String(tag);
+          let attrText = "";
+          for (const key of Object.keys(attrs || {})) {
+            const value = attrs[key];
+            if (value === null || value === undefined || value === false) {
+              continue;
+            }
+            if (value === true) {
+              attrText += " " + key;
+              continue;
+            }
+            const rendered = Array.isArray(value)
+              ? value.join(key === "class" ? " " : ", ")
+              : value;
+            attrText += ' ' + key + '="' + escapeHtmlAttr(rendered) + '"';
+          }
+          if (voidHtmlTags.has(name.toLowerCase())) {
+            return "<" + name + attrText + " />";
+          }
+          return (
+            "<" +
+            name +
+            attrText +
+            ">" +
+            flattenHtmlChildren(children) +
+            "</" +
+            name +
+            ">"
+          );
+        }
+
+        const exports = {
+          el,
+          text(value) {
+            return escapeHtml(value);
+          },
+          escape(value) {
+            return escapeHtml(value);
+          },
+          attr(value) {
+            return escapeHtmlAttr(value);
+          },
+          async list(items, renderFn) {
+            const arr = Array.isArray(items) ? items : [];
+            const parts = [];
+            for (let i = 0; i < arr.length; i++) {
+              parts.push(await renderFn(arr[i], i));
+            }
+            return parts.join("");
+          },
+          style(props) {
+            return Object.entries(props || {})
+              .filter(([, v]) => v !== null && v !== undefined && v !== false)
+              .map(([k, v]) => k + ": " + v + ";")
+              .join(" ");
+          },
+          css(rules) {
+            return Object.entries(rules || {})
+              .map(([selector, props]) => {
+                const body = Object.entries(props || {})
+                  .map(([k, v]) => "  " + k + ": " + v + ";")
+                  .join("\n");
+                return selector + " {\n" + body + "\n}";
+              })
+              .join("\n\n");
+          },
+        };
+        Object.defineProperty(exports, "pupNamespaceOnly", {
+          value: true,
+          enumerable: false,
+        });
+        return exports;
       }
 
       function lexHtmlTemplate(source, startIndex) {
@@ -1790,6 +2502,56 @@
           } else if (code[pos] === ">") {
             lexPush("gt", ">");
             pos++;
+          } else if (
+            lexWordAt(code, pos, "js") &&
+            /^\s*\{/.test(code.slice(pos + 2))
+          ) {
+            const start = pos;
+            pos += 2;
+            while (pos < code.length && /\s/.test(code[pos])) pos++;
+            pos++; // consume opening "{"
+            let depth = 1;
+            const bodyStart = pos;
+            while (pos < code.length && depth > 0) {
+              const c = code[pos];
+              if (c === '"' || c === "'" || c === "`") {
+                const quote = c;
+                pos++;
+                while (pos < code.length && code[pos] !== quote) {
+                  if (code[pos] === "\\") pos++;
+                  pos++;
+                }
+                pos++;
+                continue;
+              }
+              if (c === "/" && code[pos + 1] === "/") {
+                while (pos < code.length && code[pos] !== "\n") pos++;
+                continue;
+              }
+              if (c === "/" && code[pos + 1] === "*") {
+                pos += 2;
+                while (
+                  pos < code.length &&
+                  code.slice(pos, pos + 2) !== "*/"
+                ) {
+                  pos++;
+                }
+                pos += 2;
+                continue;
+              }
+              if (c === "{") depth++;
+              if (c === "}") {
+                depth--;
+                if (depth === 0) break;
+              }
+              pos++;
+            }
+            if (depth > 0) {
+              throw new Error("unterminated js { ... } block");
+            }
+            const raw = code.slice(bodyStart, pos);
+            pos++; // consume closing "}"
+            lexPush("jsblock", raw, start);
           } else if (/[a-zA-Z_]/.test(char)) {
             const start = pos;
             while (pos < code.length && /[a-zA-Z0-9_]/.test(code[pos])) {
@@ -1885,7 +2647,7 @@
       }
 
       async function runPipeline(opts) {
-        const code = editor.getValue();
+        const code = getEntrySource();
         const result = document.getElementById("result");
         const lexer = tokenizePupSource(code);
         /* result.innerHTML = lexer
@@ -2400,18 +3162,370 @@
         collectDeclaredNames(ast.stmts, declaredNames);
       }
 
+      function collectFunctionEntities(stmts, out) {
+        for (const s of stmts || []) {
+          if (!s) continue;
+          if (s.type === "function") {
+            out.push({
+              name: s.name,
+              bodyStmts: s.body?.stmts,
+              node: s,
+            });
+            collectFunctionEntities(s.body?.stmts, out);
+          } else if (s.type === "local" && s.value) {
+            collectFunctionEntitiesFromExpr(s.value, out, s.name);
+          } else if (s.type === "if") {
+            collectFunctionEntities(s.body?.stmts, out);
+            for (const b of s.elif || []) {
+              collectFunctionEntities(b.body?.stmts, out);
+            }
+            collectFunctionEntities(s.elseBody?.stmts, out);
+          } else if (s.type === "while") {
+            collectFunctionEntities(s.body?.stmts, out);
+          } else if (s.type === "for") {
+            collectFunctionEntities(s.body?.stmts, out);
+          } else if (s.type === "switch") {
+            for (const b of s.cases || []) {
+              collectFunctionEntities(b.body?.stmts, out);
+            }
+            collectFunctionEntities(s.defaultBody?.stmts, out);
+          } else if (s.type === "return" && s.value) {
+            collectFunctionEntitiesFromExpr(s.value, out, null);
+          } else if (s.type === "expr" && s.value) {
+            collectFunctionEntitiesFromExpr(s.value, out, null);
+          } else if (s.type === "set") {
+            collectFunctionEntitiesFromExpr(s.target, out, null);
+            collectFunctionEntitiesFromExpr(s.value, out, null);
+          } else if (
+            (s.type === "reassign" || s.type === "assign") &&
+            s.value
+          ) {
+            collectFunctionEntitiesFromExpr(s.value, out, null);
+          }
+        }
+      }
+
+      function collectFunctionEntitiesFromExpr(node, out, bindName) {
+        if (!node) return;
+        if (node.type === "anonfn") {
+          out.push({ name: bindName, bodyStmts: node.body?.stmts, node });
+          collectFunctionEntities(node.body?.stmts, out);
+          return;
+        }
+        if (node.type === "call") {
+          collectFunctionEntitiesFromExpr(node.callee, out, null);
+          for (const a of node.args || []) {
+            collectFunctionEntitiesFromExpr(a, out, null);
+          }
+          return;
+        }
+        if (node.type === "op" || node.type === "cond") {
+          collectFunctionEntitiesFromExpr(node.a, out, null);
+          collectFunctionEntitiesFromExpr(node.b, out, null);
+          return;
+        }
+        if (node.type === "dot" || node.type === "index") {
+          collectFunctionEntitiesFromExpr(node.a, out, null);
+          if (node.type === "index") {
+            collectFunctionEntitiesFromExpr(node.b, out, null);
+          }
+          return;
+        }
+        if (node.type === "object") {
+          for (const p of node.props || []) {
+            collectFunctionEntitiesFromExpr(p.value, out, null);
+          }
+          return;
+        }
+        if (node.type === "array") {
+          for (const item of node.items || []) {
+            collectFunctionEntitiesFromExpr(item, out, null);
+          }
+          return;
+        }
+        if (node.type === "group") {
+          collectFunctionEntitiesFromExpr(node.value, out, null);
+          return;
+        }
+        if (node.type === "inc") {
+          collectFunctionEntitiesFromExpr(node.a, out, null);
+          return;
+        }
+        if (node.type === "unary") {
+          collectFunctionEntitiesFromExpr(node.value, out, null);
+          return;
+        }
+        if (node.type === "ifexpr") {
+          collectFunctionEntitiesFromExpr(node.cond, out, null);
+          collectFunctionEntitiesFromExpr(node.whenTrue, out, null);
+          collectFunctionEntitiesFromExpr(node.whenFalse, out, null);
+          return;
+        }
+        if (node.type === "new") {
+          for (const a of node.args || []) {
+            collectFunctionEntitiesFromExpr(a, out, null);
+          }
+          return;
+        }
+      }
+
+      function forEachTopLevelCall(stmts, visit) {
+        for (const s of stmts || []) {
+          if (!s) continue;
+          if (s.type === "function") continue;
+          if (s.type === "jsblock") {
+            // Raw JS is opaque to static analysis; conservatively assume it
+            // may need `await`, which forces the enclosing function async.
+            visit({ callee: { type: "identifier", value: "__jsblock__" } });
+            continue;
+          }
+          if (s.type === "local") {
+            if (s.value && s.value.type !== "anonfn") {
+              forEachCallInExpr(s.value, visit);
+            }
+            continue;
+          }
+          if (s.type === "if") {
+            forEachCallInCond(s.cond, visit);
+            forEachTopLevelCall(s.body?.stmts, visit);
+            for (const b of s.elif || []) {
+              forEachCallInCond(b.cond, visit);
+              forEachTopLevelCall(b.body?.stmts, visit);
+            }
+            forEachTopLevelCall(s.elseBody?.stmts, visit);
+            continue;
+          }
+          if (s.type === "while") {
+            forEachCallInCond(s.cond, visit);
+            forEachTopLevelCall(s.body?.stmts, visit);
+            continue;
+          }
+          if (s.type === "for") {
+            forEachCallInExpr(s.start, visit);
+            forEachCallInExpr(s.end, visit);
+            if (s.step) forEachCallInExpr(s.step, visit);
+            forEachTopLevelCall(s.body?.stmts, visit);
+            continue;
+          }
+          if (s.type === "switch") {
+            forEachCallInExpr(s.value, visit);
+            for (const b of s.cases || []) {
+              forEachCallInExpr(b.value, visit);
+              forEachTopLevelCall(b.body?.stmts, visit);
+            }
+            forEachTopLevelCall(s.defaultBody?.stmts, visit);
+            continue;
+          }
+          if (s.type === "set") {
+            forEachCallInExpr(s.target, visit);
+            forEachCallInExpr(s.value, visit);
+            continue;
+          }
+          if (s.type === "reassign" || s.type === "assign") {
+            if (s.value) forEachCallInExpr(s.value, visit);
+            continue;
+          }
+          if (s.type === "return") {
+            if (s.value) forEachCallInExpr(s.value, visit);
+            continue;
+          }
+          if (s.type === "expr") {
+            forEachCallInExpr(s.value, visit);
+            continue;
+          }
+        }
+      }
+
+      function forEachCallInCond(node, visit) {
+        if (!node) return;
+        if (node.type === "cond") {
+          if (node.op === "not") {
+            forEachCallInCond(node.a, visit);
+            return;
+          }
+          if (
+            node.op === "and" ||
+            node.op === "andop" ||
+            node.op === "or" ||
+            node.op === "orop"
+          ) {
+            forEachCallInCond(node.a, visit);
+            forEachCallInCond(node.b, visit);
+            return;
+          }
+          forEachCallInExpr(node.a, visit);
+          forEachCallInExpr(node.b, visit);
+          return;
+        }
+        forEachCallInExpr(node, visit);
+      }
+
+      function forEachCallInExpr(node, visit) {
+        if (!node) return;
+        if (node.type === "call") {
+          visit(node);
+          forEachCallInExpr(node.callee, visit);
+          for (const a of node.args || []) forEachCallInExpr(a, visit);
+          return;
+        }
+        if (node.type === "anonfn") return;
+        if (node.type === "op") {
+          forEachCallInExpr(node.a, visit);
+          forEachCallInExpr(node.b, visit);
+          return;
+        }
+        if (node.type === "dot" || node.type === "index") {
+          forEachCallInExpr(node.a, visit);
+          if (node.type === "index") forEachCallInExpr(node.b, visit);
+          return;
+        }
+        if (node.type === "object") {
+          for (const p of node.props || []) forEachCallInExpr(p.value, visit);
+          return;
+        }
+        if (node.type === "array") {
+          for (const item of node.items || []) forEachCallInExpr(item, visit);
+          return;
+        }
+        if (node.type === "group") {
+          forEachCallInExpr(node.value, visit);
+          return;
+        }
+        if (node.type === "inc") {
+          forEachCallInExpr(node.a, visit);
+          return;
+        }
+        if (node.type === "unary") {
+          forEachCallInExpr(node.value, visit);
+          return;
+        }
+        if (node.type === "ifexpr") {
+          forEachCallInCond(node.cond, visit);
+          forEachCallInExpr(node.whenTrue, visit);
+          forEachCallInExpr(node.whenFalse, visit);
+          return;
+        }
+        if (node.type === "new") {
+          for (const a of node.args || []) forEachCallInExpr(a, visit);
+          return;
+        }
+      }
+
+      function calleeRequiresAwait(callee, functionAsyncByName) {
+        const key = callLookupKey(callee);
+        if (key === null) return true;
+        const isDotted = key.includes(".");
+        const shortName = isDotted ? key.split(".").pop() : key;
+        if (asyncApiNames.has(shortName)) return true;
+        if (activeApiNames.has(shortName)) return false;
+        if (isDotted && moduleNames.has(key.split(".")[0])) return false;
+        if (functionAsyncByName.has(shortName)) {
+          return functionAsyncByName.get(shortName);
+        }
+        return true;
+      }
+
+      let callAsyncByName = new Map();
+
+      function computeCallAsyncAnalysis(ast) {
+        const entities = [];
+        collectFunctionEntities(ast.stmts, entities);
+        const byName = new Map();
+        for (const e of entities) {
+          e.node._pupAsync = false;
+          if (e.name) byName.set(e.name, false);
+        }
+        let changed = true;
+        let guard = 0;
+        while (changed && guard <= entities.length + 5) {
+          changed = false;
+          guard++;
+          for (const e of entities) {
+            if (e.node._pupAsync) continue;
+            let needsAsync = false;
+            forEachTopLevelCall(e.bodyStmts, (callNode) => {
+              if (needsAsync) return;
+              if (calleeRequiresAwait(callNode.callee, byName)) {
+                needsAsync = true;
+              }
+            });
+            if (needsAsync) {
+              e.node._pupAsync = true;
+              if (e.name) byName.set(e.name, true);
+              changed = true;
+            }
+          }
+        }
+        return byName;
+      }
+
+      function getProjectConfig() {
+        try {
+          const node =
+            typeof getNode === "function" ? getNode("config.json") : null;
+          if (node && node.type === "file") {
+            return JSON.parse(node.content || "{}");
+          }
+        } catch (e) {}
+        return {};
+      }
+
+      function isObfuscationEnabled() {
+        return getProjectConfig().obfuscateOutput !== false;
+      }
+
+      function getEntryPath() {
+        const cfg = getProjectConfig();
+        return typeof cfg.entry === "string" && cfg.entry
+          ? cfg.entry
+          : "main.pup";
+      }
+
+      function getEntrySource() {
+        const node = getNode(getEntryPath());
+        if (node && node.type === "file") return node.content;
+        return editor.getValue();
+      }
+
+      let nameObfuscationMap = null;
+
+      function buildNameObfuscationMap(names) {
+        const map = new Map();
+        const shuffled = Array.from(names);
+        for (let i = shuffled.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+        }
+        let counter = 0;
+        for (const name of shuffled) {
+          map.set(name, "_0x" + (counter++).toString(16));
+        }
+        return map;
+      }
+
+      function emitName(name) {
+        if (nameObfuscationMap && nameObfuscationMap.has(name)) {
+          return nameObfuscationMap.get(name);
+        }
+        return name;
+      }
+
       function resolveIdentifier(name) {
         if (name === "__internals" && !config.internalAPI) {
           throw new Error("__internals is disabled in this environment");
         }
         if (activeApiNames.has(name)) return "pupApi." + name;
-        if (declaredNames.has(name)) return name;
+        if (declaredNames.has(name)) return emitName(name);
         throw new Error("'" + name + "' is not defined");
       }
 
       function transpile(ast) {
         setActiveApi(ast);
         setDeclaredNames(ast);
+        callAsyncByName = computeCallAsyncAnalysis(ast);
+        nameObfuscationMap = isObfuscationEnabled()
+          ? buildNameObfuscationMap(declaredNames)
+          : null;
         return '"use strict";\n' + transpileStmts(ast.stmts);
       }
 
@@ -2425,7 +3539,13 @@
       function transpileStmt(stmt) {
         if (stmt.type === "local") {
           checkName(stmt.name);
-          return "let " + stmt.name + " = " + transpileExpr(stmt.value) + ";";
+          return (
+            "let " +
+            emitName(stmt.name) +
+            " = " +
+            transpileExpr(stmt.value) +
+            ";"
+          );
         }
         if (stmt.type === "if") {
           let code =
@@ -2479,18 +3599,19 @@
         }
         if (stmt.type === "for") {
           checkName(stmt.name);
+          const loopVar = emitName(stmt.name);
           const step = stmt.step ? transpileExpr(stmt.step) : "1";
           return (
             "for (let " +
-            stmt.name +
+            loopVar +
             " = " +
             transpileExpr(stmt.start) +
             "; " +
-            stmt.name +
+            loopVar +
             " <= " +
             transpileExpr(stmt.end) +
             "; " +
-            stmt.name +
+            loopVar +
             " += " +
             step +
             ") {\n" +
@@ -2527,20 +3648,15 @@
         }
         if (stmt.type === "function") {
           checkName(stmt.name);
-          const params = stmt.params.join(", ");
+          const params = stmt.params.map(emitName).join(", ");
           const body = transpileStmts(stmt.body?.stmts);
-          const fn = "async function(" + params + ") {\n" + body + "\n}";
+          const kw = stmt._pupAsync ? "async function" : "function";
+          const fn = kw + "(" + params + ") {\n" + body + "\n}";
           if (stmt.local) {
-            return "const " + stmt.name + " = " + fn + ";";
+            return "const " + emitName(stmt.name) + " = " + fn + ";";
           }
           return (
-            "async function " +
-            stmt.name +
-            "(" +
-            params +
-            ") {\n" +
-            body +
-            "\n}"
+            kw + " " + emitName(stmt.name) + "(" + params + ") {\n" + body + "\n}"
           );
         }
         if (stmt.type === "return") {
@@ -2551,27 +3667,23 @@
           if (activeApiNames.has(stmt.name)) {
             throw new Error("'" + stmt.name + "' is not assignable");
           }
-          resolveIdentifier(stmt.name);
+          const lhs = resolveIdentifier(stmt.name);
           const op = {
             pluseq: "+=",
             minuseq: "-=",
             multeq: "*=",
             diveq: "/=",
           };
-          return (
-            stmt.name +
-            " " +
-            op[stmt.op] +
-            " " +
-            transpileExpr(stmt.value) +
-            ";"
-          );
+          return lhs + " " + op[stmt.op] + " " + transpileExpr(stmt.value) + ";";
         }
         if (stmt.type === "expr") {
           return transpileExpr(stmt.value) + ";";
         }
         if (stmt.type === "include") {
           return "";
+        }
+        if (stmt.type === "jsblock") {
+          return stmt.code;
         }
         return "";
       }
@@ -2728,7 +3840,8 @@
         if (node.type === "call") {
           const callee = transpileExpr(node.callee);
           const args = node.args.map(transpileExpr).join(", ");
-          return "await " + callee + "(" + args + ")";
+          const needsAwait = calleeRequiresAwait(node.callee, callAsyncByName);
+          return (needsAwait ? "await " : "") + callee + "(" + args + ")";
         }
         if (node.type === "group") {
           return node.value
@@ -2754,9 +3867,10 @@
           );
         }
         if (node.type === "anonfn") {
-          const params = node.params.join(", ");
+          const params = node.params.map(emitName).join(", ");
           const body = transpileStmts(node.body?.stmts);
-          return "async function(" + params + ") {\n" + body + "\n}";
+          const kw = node._pupAsync ? "async function" : "function";
+          return kw + "(" + params + ") {\n" + body + "\n}";
         }
         return "undefined";
       }
@@ -2946,6 +4060,10 @@
 
         function parseStmt() {
           if (!lexer[pos]) return;
+          if (lexer[pos].type === "jsblock") {
+            const code = lexer[pos++].value;
+            return { type: "jsblock", code };
+          }
           if (lexer[pos].type === "include") {
             assertInclude();
             pos++;

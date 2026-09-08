@@ -64,6 +64,16 @@
       .doc-section-card p:last-of-type {
         margin-bottom: 0;
       }
+      .doc-section-card table {
+        color: #d4d4d4;
+      }
+      .doc-section-card code {
+        color: #ce9178;
+      }
+      .module-badge {
+        font-size: 0.7rem;
+        vertical-align: middle;
+      }
       #doc-search {
         background: #252526;
         color: #d4d4d4;
@@ -107,8 +117,742 @@
       </div>
     </div>
     <div class="container mt-4">
-      <h1>This page is a work in progress.</h1>
-      <p>For now refer to examples to learn these modules.</p>
+      <div id="result"></div>
+      <div class="row">
+        <aside class="col-lg-3">
+          <div class="position-sticky top-0 pt-3">
+            <div class="card mb-3 border-secondary" data-bs-theme="dark">
+              <div class="card-header">Modules</div>
+              <div class="card-body p-2">
+                <nav aria-label="Module topics">
+                  <ul
+                    class="nav nav-pills flex-column"
+                    id="doc-sidebar-list"
+                  ></ul>
+                </nav>
+              </div>
+            </div>
+          </div>
+        </aside>
+        <main class="col-lg-9">
+          <div class="mb-3">
+            <label for="doc-search" class="form-label visually-hidden"
+              >search modules</label
+            >
+            <input
+              type="search"
+              id="doc-search"
+              class="form-control"
+              placeholder="search modules..."
+              autocomplete="off"
+            />
+          </div>
+          <p id="doc-search-empty" class="d-none mb-3">
+            No modules match your search.
+          </p>
+
+          <div class="card doc-section-card" data-topic="core">
+            <div class="card-body">
+              <h2 id="core">core (always available)</h2>
+              <p>
+                These functions need no <code>include</code> — they're always
+                in scope.
+              </p>
+              <ul>
+                <li>
+                  <code>wait(seconds)</code> — pauses execution for the given
+                  number of seconds before continuing. Throws if
+                  <code>seconds</code> is negative.
+                </li>
+                <li>
+                  <code>eval(fn)</code> — calls a function value
+                  <code>fn</code> and returns its result. Throws if
+                  <code>fn</code> isn't a function.
+                </li>
+                <li>
+                  <code>toString(value)</code> — converts any value to a
+                  string (objects are JSON-stringified; enum instances become
+                  their underlying value).
+                </li>
+                <li>
+                  <code>toNumber(value)</code> — converts a value to a
+                  number (booleans become <code>0</code>/<code>1</code>,
+                  <code>null</code>/<code>undefined</code> become
+                  <code>NaN</code>).
+                </li>
+                <li>
+                  <code>toBool(value)</code> — converts a value to a
+                  boolean using common-sense rules (<code>0</code>,
+                  <code>""</code>, <code>"false"</code>,
+                  <code>null</code>/<code>undefined</code> are falsy).
+                </li>
+                <li>
+                  <code>restart()</code> — re-runs the current program from
+                  the top. Only works while a program is actually running.
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+
+local n = toNumber("42")
+print(n + 1)
+
+wait(1)
+print("one second later")
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="console">
+            <div class="card-body">
+              <h2 id="console">console</h2>
+              <p><code>include console</code></p>
+              <p>Text output and user input for the output panel.</p>
+              <ul>
+                <li>
+                  <code>print(...values)</code> — writes the given values
+                  (space-separated) to the output log, followed by a newline.
+                </li>
+                <li>
+                  <code>ask(...prompt)</code> — prints the prompt, waits for
+                  the user to type a value into the command line and press
+                  Enter, echoes what they typed back into the log, and
+                  returns it.
+                </li>
+                <li>
+                  <code>dialog(...prompt)</code> — same as <code>ask</code>,
+                  but the entered value is <em>not</em> echoed back into the
+                  log (useful for input you don't want cluttering the
+                  output).
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+
+print("Hello, world!")
+
+local name = ask("What's your name?")
+print("Hi, " + name + "!")
+
+local secret = dialog("Enter a password:")
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="utils">
+            <div class="card-body">
+              <h2 id="utils">utils</h2>
+              <p><code>include utils</code></p>
+              <p>
+                Small helpers, currently just <code>utils.time</code> for
+                reading the local clock.
+              </p>
+              <ul>
+                <li><code>utils.time.currentYear()</code></li>
+                <li>
+                  <code>utils.time.currentMonth()</code> — 1-12 (January is
+                  1, not 0).
+                </li>
+                <li><code>utils.time.currentDay()</code> — day of month.</li>
+                <li><code>utils.time.currentHour()</code> — 0-23.</li>
+                <li><code>utils.time.currentMinute()</code></li>
+                <li><code>utils.time.currentSecond()</code></li>
+                <li><code>utils.time.currentMillisecond()</code></li>
+              </ul>
+              <pre class="example-editor">
+include console
+include utils
+
+print("The year is " + utils.time.currentYear())
+print("Right now it's " + utils.time.currentHour() + ":" + utils.time.currentMinute())
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="vectors">
+            <div class="card-body">
+              <h2 id="vectors">vectors</h2>
+              <p><code>include vectors</code></p>
+              <p>
+                Simple 2D/3D point-like types. Any field left out defaults to
+                <code>0</code>. (These same types are also available through
+                <code>include game</code>, so you usually don't need to
+                include both.)
+              </p>
+              <ul>
+                <li>
+                  <code>new Vector2(x, y)</code> — has <code>.x</code> and
+                  <code>.y</code> fields.
+                </li>
+                <li>
+                  <code>new Vector3(x, y, z)</code> — has <code>.x</code>,
+                  <code>.y</code>, and <code>.z</code> fields.
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+include vectors
+
+local pos = new Vector2(10, 20)
+print(pos.x)
+print(pos.y)
+
+local zero = new Vector3()
+// zero.x, zero.y, zero.z are all 0
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="io">
+            <div class="card-body">
+              <h2 id="io">io</h2>
+              <p><code>include io</code></p>
+              <p>
+                Keyboard input. Most useful alongside <code>game</code> for
+                reading input every frame inside <code>game.mainLoop</code>.
+              </p>
+              <ul>
+                <li>
+                  <code>isKeyDown(key)</code> — <code>true</code> for every
+                  frame the key is held down.
+                </li>
+                <li>
+                  <code>isKeyPressed(key)</code> — <code>true</code> only on
+                  the single frame the key was first pressed (it won't fire
+                  again until the key is released and pressed again), useful
+                  for things that should happen once per press instead of
+                  every frame it's held.
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+include io
+
+if isKeyDown("w"):
+  print("w is currently held down")
+end
+
+if isKeyPressed(" "):
+  print("space was just pressed")
+end
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="game">
+            <div class="card-body">
+              <h2 id="game">game</h2>
+              <p><code>include game</code></p>
+              <p>
+                A minimal 2D canvas for making simple games: a window, solid
+                shapes, text, and a frame loop.
+                <code>Vector2</code>/<code>Vector3</code> and the alignment
+                constants <code>center</code>, <code>left</code>, and
+                <code>right</code> are also exposed once this module is
+                included.
+              </p>
+              <ul>
+                <li>
+                  <code>game.createWindow(width, height)</code> — creates and
+                  shows the canvas. Call this once before any other
+                  <code>game.*</code> drawing function.
+                </li>
+                <li>
+                  <code>game.fillColor(color)</code> — sets the color (any
+                  CSS color string, e.g. <code>"#ff0000"</code> or
+                  <code>"red"</code>) used by <code>background</code>,
+                  <code>rect</code>, <code>circle</code>, and
+                  <code>text</code>.
+                </li>
+                <li>
+                  <code>game.background(color)</code> — fills the entire
+                  canvas with a color (also updates the fill color).
+                </li>
+                <li>
+                  <code>game.rect(x, y, width, height)</code> — draws a
+                  filled rectangle.
+                </li>
+                <li>
+                  <code>game.circle(x, y, radius)</code> — draws a filled
+                  circle.
+                </li>
+                <li>
+                  <code>game.text(text, x, y, fontSize = 16, posmode =
+                  "left")</code>
+                  — draws text. <code>posmode</code> is
+                  <code>"left"</code>, <code>"center"</code>, or
+                  <code>"right"</code> and controls horizontal alignment
+                  relative to <code>x</code>.
+                </li>
+                <li>
+                  <code>game.clear()</code> — clears the entire canvas to
+                  transparent.
+                </li>
+                <li>
+                  <code>game.mainLoop(fn)</code> — calls <code>fn</code>
+                  once per animation frame (via
+                  <code>requestAnimationFrame</code>) until the program is
+                  stopped or restarted. This is where you put your game's
+                  update/draw code.
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+include game
+include io
+
+game.createWindow(400, 300)
+game.fillColor("#3388ff")
+
+local x = 10
+
+game.mainLoop(function()
+  game.clear()
+  if isKeyDown("d"):
+    x += 2
+  end
+  game.circle(x, 150, 20)
+  game.text("Score: 0", 10, 20, 16, left)
+end)
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="http">
+            <div class="card-body">
+              <h2 id="http">http</h2>
+              <p><code>include http</code></p>
+              <p>
+                Makes HTTP requests. Responses are auto-parsed as JSON when
+                the content type or body shape looks like JSON, otherwise
+                you get the raw text back. A non-2xx status throws an error.
+              </p>
+              <ul>
+                <li>
+                  <code>http.request(method, url, body = null, headers =
+                  {})</code>
+                  — full control: any method, an optional body (objects are
+                  JSON-encoded automatically with a
+                  <code>Content-Type</code> header added if you didn't set
+                  one), and optional headers.
+                </li>
+                <li>
+                  <code>http.response(url)</code>,
+                  <code>http.response(method, url)</code>, or
+                  <code>http.response(method, url, headers)</code> — a
+                  shorthand for a GET-style request without a body.
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+include http
+
+local data = http.response("https://example.com/api")
+print(data)
+
+local created = http.request("POST", "https://example.com/api", { name: "pup" })
+print(created)
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="jsonplus">
+            <div class="card-body">
+              <h2 id="jsonplus">
+                jsonplus <span class="badge bg-warning text-dark module-badge">in development</span>
+              </h2>
+              <p><code>include jsonplus</code></p>
+              <p>Small extras for working with JSON-shaped data.</p>
+              <ul>
+                <li>
+                  <code>jsonplus.length(value)</code> — returns
+                  <code>value.length</code> (works for arrays and strings).
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+include jsonplus
+
+local items = [1, 2, 3]
+print(jsonplus.length(items))
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="math">
+            <div class="card-body">
+              <h2 id="math">
+                math <span class="badge bg-warning text-dark module-badge">in development</span>
+              </h2>
+              <p><code>include math</code></p>
+              <ul>
+                <li>
+                  <code>math.random(min, max)</code> — a random floating
+                  point number in the range <code>[min, max)</code>.
+                </li>
+                <li><code>math.round(value)</code></li>
+                <li><code>math.floor(value)</code></li>
+                <li><code>math.ceil(value)</code></li>
+              </ul>
+              <pre class="example-editor">
+include console
+include math
+
+local roll = math.round(math.random(1, 7))
+print(roll)
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="enums">
+            <div class="card-body">
+              <h2 id="enums">enums</h2>
+              <p><code>include enums</code></p>
+              <p>
+                A restricted set of allowed string values. Constructing an
+                enum with a value outside the allowed list throws.
+              </p>
+              <ul>
+                <li>
+                  <code>enums.createEnum([...options])</code> — returns a new
+                  enum type. <code>options</code> is a non-empty array of
+                  allowed values (compared as strings).
+                </li>
+                <li>
+                  <code>enums.Enum(enumType, value)</code> — constructs an
+                  instance of an enum type returned by
+                  <code>createEnum</code>. Its <code>.value</code> field
+                  holds the underlying string, and it stringifies to that
+                  value automatically. Throws if <code>value</code> isn't one
+                  of the allowed options.
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+include enums
+
+local Direction = enums.createEnum(["up", "down", "left", "right"])
+local facing = enums.Enum(Direction, "up")
+
+print(facing)
+// throws: invalid enum value
+// local bad = enums.Enum(Direction, "sideways")
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="html">
+            <div class="card-body">
+              <h2 id="html">html</h2>
+              <p><code>include html</code></p>
+              <p>
+                Builds HTML as plain strings from ordinary pup values —
+                arrays, objects, functions — instead of hand-concatenating
+                markup. It has no dependency on the DOM, so it works
+                standalone (build a string, do whatever you want with it) or
+                paired with <a href="#htmlapp">htmlapp</a> to actually put
+                that string on the page, or with
+                <a href="#ssr">ssr</a> to write it out server-side. Text you
+                pass through is <strong>not</strong> auto-escaped — escape it
+                yourself with <code>html.text</code>/<code>html.escape</code>
+                wherever it might contain user input.
+              </p>
+              <ul>
+                <li>
+                  <code>html.el(tag, attrs, children)</code> — builds one
+                  element. <code>attrs</code> is an object of attribute
+                  name/value pairs (<code>true</code> renders a bare
+                  attribute, <code>false</code>/<code>null</code> omits it
+                  entirely, an array is joined with spaces for
+                  <code>class</code> and commas otherwise); values are
+                  automatically escaped. <code>children</code> is a string,
+                  a number, an array of them (nested arrays are flattened),
+                  or <code>null</code> for none. Known void elements
+                  (<code>img</code>, <code>br</code>, <code>input</code>,
+                  etc.) are rendered self-closing.
+                </li>
+                <li>
+                  <code>html.text(value)</code> /
+                  <code>html.escape(value)</code> (alias) — HTML-escapes a
+                  value so it's safe to drop into markup as text.
+                </li>
+                <li>
+                  <code>html.attr(value)</code> — escapes a value for safe
+                  use inside an attribute (used internally by
+                  <code>el</code>; exposed in case you're building attribute
+                  strings by hand).
+                </li>
+                <li>
+                  <code>html.list(items, renderFn)</code> — calls
+                  <code>renderFn(item, index)</code> for every item in an
+                  array and joins the results into one string. This is the
+                  easiest way to turn a pup array (a hand of cards, a list of
+                  players, ...) into repeated markup.
+                </li>
+                <li>
+                  <code>html.style(props)</code> — turns an object of CSS
+                  properties into an inline <code>style="..."</code>-ready
+                  string, e.g. for passing as an <code>el</code> attribute.
+                </li>
+                <li>
+                  <code>html.css(rules)</code> — turns an object of
+                  <code>{ selector: { property: value } }</code> into a full
+                  CSS stylesheet string, ready to hand to
+                  <code>htmlapp.style</code> (or write to a
+                  <code>.css</code> file via <code>ssr.render</code>).
+                </li>
+              </ul>
+              <pre class="example-editor">
+include console
+include html
+
+local hand = [
+  { suit: "hearts", value: "A" },
+  { suit: "spades", value: "K" }
+]
+
+function renderCard(card, i)
+  return html.el("div", { class: "card" }, html.text(card.value) + " of " + html.text(card.suit))
+end
+
+local cardsHtml = html.list(hand, renderCard)
+local page = html.el("div", { class: "hand" }, cardsHtml)
+
+print(page)
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="htmlapp">
+            <div class="card-body">
+              <h2 id="htmlapp">htmlapp</h2>
+              <p>
+                <code>include htmlapp</code>
+                <span class="badge bg-info text-dark module-badge"
+                  >browser only</span
+                >
+              </p>
+              <p>
+                Puts real HTML (and CSS) onto the page — into the output
+                panel, or into elements you select — for building simple UIs
+                instead of drawing to a canvas. Pairs naturally with
+                <a href="#html">html</a> for building the markup/CSS
+                strings it renders.
+              </p>
+              <ul>
+                <li>
+                  <code>htmlapp.render(html)</code> — replaces the app's
+                  default output area with the given HTML string.
+                </li>
+                <li>
+                  <code>htmlapp.mount(html, selector)</code> — like
+                  <code>render</code>, but targets a specific element (a CSS
+                  selector string) instead of the default area.
+                </li>
+                <li>
+                  <code>htmlapp.clear(selector)</code> — empties an element
+                  (defaults to the app's output area).
+                </li>
+                <li>
+                  <code>htmlapp.setHtmlAttribute(selector, property,
+                  value)</code>
+                  / <code>htmlapp.setProperty(...)</code> (alias) — sets an
+                  attribute or property (<code>class</code>,
+                  <code>value</code>, <code>checked</code>, and
+                  <code>disabled</code> are handled specially so they behave
+                  like you'd expect on form elements). Pass
+                  <code>false</code>/<code>null</code> to remove it.
+                </li>
+                <li>
+                  <code>htmlapp.getHtmlAttribute(selector, property)</code>
+                  / <code>htmlapp.getProperty(...)</code> (alias) — reads an
+                  attribute or property back.
+                </li>
+                <li>
+                  <code>htmlapp.style(cssText)</code> — injects (or
+                  replaces) a single <code>&lt;style&gt;</code> tag with the
+                  given CSS text, so anything you've rendered can actually be
+                  styled. Pass it a plain CSS string, or the output of
+                  <code>html.css(...)</code>.
+                </li>
+                <li>
+                  <code>htmlapp.setTitle(title)</code> — sets the browser
+                  tab's title.
+                </li>
+                <li>
+                  <code>htmlapp.export(html, title, css)</code> — returns a
+                  complete, standalone HTML document (as a string) wrapping
+                  the given content, with an optional CSS string embedded in
+                  its <code>&lt;head&gt;</code>.
+                </li>
+                <li>
+                  <code>htmlapp.download(html, filename, title, css)</code> —
+                  builds that same standalone document and triggers a
+                  browser download of it.
+                </li>
+              </ul>
+              <pre class="example-editor">
+include html
+include htmlapp
+
+local page = html.el("div", { class: "hand" }, "&lt;b&gt;your move&lt;/b&gt;")
+local pageCss = html.css({ ".hand": { display: "flex", gap: "8px" } })
+
+htmlapp.style(pageCss)
+htmlapp.render(page)
+          </pre
+              >
+            </div>
+          </div>
+
+          <div class="card doc-section-card" data-topic="ssr">
+            <div class="card-body">
+              <h2 id="ssr">
+                ssr
+                <span class="badge bg-info text-dark module-badge"
+                  >node.js only</span
+                >
+              </h2>
+              <p><code>include ssr</code></p>
+              <p>
+                Server-side rendering: writing out an HTML string when
+                running under Node.js (via the "Node.js" or "HTML" transpile
+                targets).
+              </p>
+              <ul>
+                <li>
+                  <code>ssr.render(html, filePath)</code> — with a
+                  <code>filePath</code>, writes the HTML string to that file
+                  on disk; without one, prints it to stdout. (In the
+                  browser-based Run panel, it falls back to writing into the
+                  output log so you can still see the result.)
+                </li>
+              </ul>
+              <pre class="example-editor">
+include ssr
+
+ssr.render("&lt;h1&gt;Hello&lt;/h1&gt;", "out.html")
+          </pre
+              >
+            </div>
+          </div>
+        </main>
+      </div>
     </div>
+    <script>
+      const docSearch = document.getElementById("doc-search");
+      const docSearchEmpty = document.getElementById("doc-search-empty");
+      const docSections = document.querySelectorAll(".doc-section-card");
+      const sidebarList = document.getElementById("doc-sidebar-list");
+      const sidebarLinks = [];
+
+      docSections.forEach((section) => {
+        const heading = section.querySelector("h2[id]");
+        if (!heading) return;
+
+        const li = document.createElement("li");
+        li.className = "nav-item";
+        li.dataset.sectionId = heading.id;
+
+        const link = document.createElement("a");
+        link.className = "nav-link";
+        link.href = "#" + heading.id;
+        link.textContent = heading.childNodes[0]?.textContent.trim() || heading.textContent.trim();
+        li.appendChild(link);
+        sidebarList.appendChild(li);
+        sidebarLinks.push(link);
+      });
+
+      function filterDocTopics() {
+        const query = docSearch.value.trim().toLowerCase();
+        let visible = 0;
+
+        docSections.forEach((section) => {
+          const topic = (section.dataset.topic || "").toLowerCase();
+          const text = section.textContent.toLowerCase();
+          const match = !query || topic.includes(query) || text.includes(query);
+          section.classList.toggle("d-none", !match);
+          if (match) visible++;
+        });
+
+        sidebarList.querySelectorAll(".nav-item").forEach((item) => {
+          const section = document
+            .getElementById(item.dataset.sectionId)
+            ?.closest(".doc-section-card");
+          item.classList.toggle(
+            "d-none",
+            !section || section.classList.contains("d-none"),
+          );
+        });
+
+        docSearchEmpty.classList.toggle("d-none", visible > 0 || !query);
+      }
+
+      docSearch.addEventListener("input", filterDocTopics);
+
+      const sectionHeadings = [
+        ...document.querySelectorAll(".doc-section-card h2[id]"),
+      ];
+      const observer = new IntersectionObserver(
+        (entries) => {
+          const visible = entries
+            .filter((e) => e.isIntersecting)
+            .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0];
+          if (!visible) return;
+          const id = visible.target.id;
+          sidebarLinks.forEach((link) => {
+            link.classList.toggle(
+              "active",
+              link.getAttribute("href") === "#" + id,
+            );
+          });
+        },
+        { rootMargin: "-20% 0px -70% 0px", threshold: [0, 0.25, 0.5, 1] },
+      );
+      sectionHeadings.forEach((h) => observer.observe(h));
+
+      document.querySelectorAll(".example-editor").forEach((el, i) => {
+        const code = el.textContent.trim();
+        el.textContent = "";
+        el.id = "example-" + i;
+        const editor = ace.edit(el.id);
+        editor.setTheme("ace/theme/monokai");
+        editor.session.setMode("ace/mode/pup");
+        editor.setValue(code, -1);
+        editor.setReadOnly(true);
+
+        editor.setOptions({
+          showPrintMargin: false,
+          highlightActiveLine: false,
+          highlightGutterLine: false,
+          highlightSelectedWord: false,
+          showLineNumbers: false,
+          showGutter: false,
+          displayIndentGuides: false,
+          behavioursEnabled: false,
+          animatedScroll: false,
+          wrap: true,
+        });
+        editor.renderer.setShowGutter(false);
+        editor.renderer.$cursorLayer.element.style.display = "none";
+
+        const lineHeight = editor.renderer.lineHeight;
+        const lines = editor.session.getScreenLength();
+        editor.container.style.height =
+          lines * lineHeight + editor.renderer.scrollBar.getWidth() + "px";
+        editor.resize();
+      });
+    </script>
   </body>
 </html>

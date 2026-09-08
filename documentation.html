@@ -319,6 +319,16 @@ end
             <div class="card-body">
               <h2 id="logical-operators">logical operators</h2>
               <p>Logical operators are used to combine multiple conditions.</p>
+              <p>
+                <code>and</code>/<code>&amp;&amp;</code>,
+                <code>or</code>/<code>||</code>, and
+                <code>not</code>/<code>!</code> are exact aliases of one
+                another — each pair compiles to the same operator, with the
+                same precedence, so <code>x &gt; y and x &lt; 30</code> and
+                <code>x &gt; y &amp;&amp; x &lt; 30</code> are two spellings of
+                the identical expression. Pick whichever style you (or your
+                team) prefer; pup will never treat them differently.
+              </p>
               <pre class="example-editor">
 include console
 
@@ -350,6 +360,50 @@ if !(x > y):
 end
           </pre
               >
+            </div>
+          </div>
+          <div class="card doc-section-card" data-topic="type-safety">
+            <div class="card-body">
+              <h2 id="type-safety">type safety</h2>
+              <p>
+                pup's type checker is <strong>compile-time only</strong>.
+                While you're editing, the transpiler statically analyzes your
+                code and can flag type mismatches (e.g. passing a string
+                where a function expects a number) directly in the editor
+                gutter — but this checking is purely advisory and does not
+                change the emitted JavaScript. Every type annotation is
+                erased during transpilation; nothing about types is checked,
+                enforced, or even present at runtime.
+              </p>
+              <p>
+                This is the same tradeoff TypeScript makes relative to
+                JavaScript: types exist to catch mistakes before you run your
+                program, not to guard against bad values while it's running.
+                Concretely, this means:
+              </p>
+              <pre class="example-editor">
+include console
+
+function double(n)
+  return n * 2
+end
+
+// The editor may warn you here at compile time...
+local result = double("not a number")
+
+// ...but nothing stops this from actually running:
+// it happily executes with whatever value you pass,
+// and any resulting bug (like NaN) only shows up as a
+// runtime symptom, not a runtime type error.
+print(result)
+          </pre
+              >
+              <p>
+                If you need a value to actually be validated while the
+                program is running (not just checked while you're writing
+                it), you're responsible for writing that check yourself —
+                pup does not insert any runtime guards on your behalf.
+              </p>
             </div>
           </div>
           <div class="card doc-section-card" data-topic="constructors">
