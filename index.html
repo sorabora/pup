@@ -2331,12 +2331,23 @@
         const target = getTranspileTarget();
         if (target === "html") {
           return {
-            js: PupBundle.emitHtmlDocument(modules, transpiledBody),
+            js: PupBundle.emitHtmlDocument(
+              modules,
+              transpiledBody,
+              apiKeyObfuscationMap,
+              apiMemberObfuscationMaps,
+            ),
             modules,
           };
         }
         return {
-          js: PupBundle.emitProgram(modules, transpiledBody, target),
+          js: PupBundle.emitProgram(
+            modules,
+            transpiledBody,
+            target,
+            apiKeyObfuscationMap,
+            apiMemberObfuscationMaps,
+          ),
           modules,
         };
       }
@@ -2663,7 +2674,7 @@
           const includes = [];
           collectIncludes(ast.stmts, includes);
           assertModuleRequirements(includes);
-          const body = transpile(ast);
+          const body = transpile(ast, { forExport: true });
           const bundled = emitBundledOutput(ast, body);
           const js = bundled.js;
           lastTranspiledJs = js;
@@ -3488,6 +3499,36 @@
       }
 
       let nameObfuscationMap = null;
+      let apiKeyObfuscationMap = null;
+      let apiMemberObfuscationMaps = null;
+
+      const OBFUSCATABLE_MODULE_MEMBERS = {
+        game: [
+          "createWindow",
+          "background",
+          "text",
+          "checkCollision",
+          "rect",
+          "circle",
+          "clear",
+          "fillColor",
+          "mainLoop",
+        ],
+        math: ["random", "round", "floor", "ceil"],
+        htmlapp: [
+          "render",
+          "setHtmlAttribute",
+          "setProperty",
+          "getHtmlAttribute",
+          "getProperty",
+          "mount",
+          "clear",
+          "setTitle",
+          "export",
+          "download",
+        ],
+        http: ["request", "response"],
+      };
 
       function buildNameObfuscationMap(names) {
         const map = new Map();
@@ -3514,18 +3555,41 @@
         if (name === "__internals" && !config.internalAPI) {
           throw new Error("__internals is disabled in this environment");
         }
-        if (activeApiNames.has(name)) return "pupApi." + name;
+        if (activeApiNames.has(name)) {
+          const obfKey = apiKeyObfuscationMap && apiKeyObfuscationMap.get(name);
+          return "pupApi." + (obfKey || name);
+        }
         if (declaredNames.has(name)) return emitName(name);
         throw new Error("'" + name + "' is not defined");
       }
 
-      function transpile(ast) {
+      function transpile(ast, options) {
+        const forExport = !!(options && options.forExport);
         setActiveApi(ast);
         setDeclaredNames(ast);
         callAsyncByName = computeCallAsyncAnalysis(ast);
-        nameObfuscationMap = isObfuscationEnabled()
+        const obfuscateNames = isObfuscationEnabled();
+        const obfuscateApi = forExport && obfuscateNames;
+        nameObfuscationMap = obfuscateNames
           ? buildNameObfuscationMap(declaredNames)
           : null;
+        apiKeyObfuscationMap = obfuscateApi
+          ? buildNameObfuscationMap([...activeApiNames])
+          : null;
+        apiMemberObfuscationMaps = null;
+        if (obfuscateApi) {
+          apiMemberObfuscationMaps = new Map();
+          for (const [modName, members] of Object.entries(
+            OBFUSCATABLE_MODULE_MEMBERS,
+          )) {
+            if (activeApiNames.has(modName)) {
+              apiMemberObfuscationMaps.set(
+                modName,
+                buildNameObfuscationMap(members),
+              );
+            }
+          }
+        }
         return '"use strict";\n' + transpileStmts(ast.stmts);
       }
 
@@ -3820,7 +3884,19 @@
           );
         }
         if (node.type === "dot") {
-          return transpileExpr(node.a) + "." + node.b.value;
+          const base = transpileExpr(node.a);
+          if (
+            node.a.type === "identifier" &&
+            activeApiNames.has(node.a.value) &&
+            apiMemberObfuscationMaps &&
+            apiMemberObfuscationMaps.has(node.a.value)
+          ) {
+            const obfMember = apiMemberObfuscationMaps
+              .get(node.a.value)
+              .get(node.b.value);
+            if (obfMember) return base + "." + obfMember;
+          }
+          return base + "." + node.b.value;
         }
         if (node.type === "index") {
           return transpileExpr(node.a) + "[" + transpileExpr(node.b) + "]";

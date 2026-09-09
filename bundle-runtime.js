@@ -16,6 +16,14 @@
     return 'document.getElementById("output-log")';
   }
 
+  function memberKey(memberMap, name) {
+    const obf =
+      memberMap && typeof memberMap.get === "function"
+        ? memberMap.get(name)
+        : null;
+    return JSON.stringify(obf || name);
+  }
+
   const chunks = {
     core() {
       return `
@@ -182,13 +190,14 @@ function isKeyPressed(key) {
 }`;
     },
 
-    math() {
+    math(memberMap) {
+      const k = (name) => memberKey(memberMap, name);
       return `
 const math = {
-  random(min, max) { return Math.random() * (max - min) + min; },
-  round(value) { return Math.round(value); },
-  floor(value) { return Math.floor(value); },
-  ceil(value) { return Math.ceil(value); },
+  [${k("random")}](min, max) { return Math.random() * (max - min) + min; },
+  [${k("round")}](value) { return Math.round(value); },
+  [${k("floor")}](value) { return Math.floor(value); },
+  [${k("ceil")}](value) { return Math.ceil(value); },
 };`;
     },
 
@@ -224,8 +233,9 @@ function createEnum(options) {
 const enums = { Enum: pupEnumType, createEnum };`;
     },
 
-    game(target) {
+    game(target, memberMap) {
       const host = canvasHostExpr(target);
+      const k = (name) => memberKey(memberMap, name);
       return `
 const gameState = { canvas: null, ctx: null, fillColor: "#000000" };
 function gameApplyFillColor(color) {
@@ -236,7 +246,7 @@ const center = "center";
 const left = "left";
 const right = "right";
 const game = {
-  createWindow(width, height) {
+  [${k("createWindow")}](width, height) {
     const host = ${host};
     if (!host) throw new Error("Canvas host element not found");
     const canvas = document.createElement("canvas");
@@ -254,12 +264,12 @@ const game = {
     if (typeof initIoInput === "function") initIoInput();
     canvas.focus();
   },
-  background(color) {
+  [${k("background")}](color) {
     if (!gameState.ctx) throw new Error("No window created");
     gameApplyFillColor(color);
     gameState.ctx.fillRect(0, 0, gameState.canvas.width, gameState.canvas.height);
   },
-  text(text, x, y, fontSize, posmode) {
+  [${k("text")}](text, x, y, fontSize, posmode) {
     if (!gameState.ctx) throw new Error("No window created");
     fontSize = fontSize ?? 16;
     posmode = posmode ?? "left";
@@ -272,27 +282,27 @@ const game = {
     gameState.ctx.fillText(String(text), x, y);
     gameState.ctx.restore();
   },
-  checkCollision(x1, y1, w1, h1, x2, y2, w2, h2) {
+  [${k("checkCollision")}](x1, y1, w1, h1, x2, y2, w2, h2) {
     return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
   },
-  rect(x, y, width, height) {
+  [${k("rect")}](x, y, width, height) {
     if (!gameState.ctx) throw new Error("No window created");
     gameState.ctx.fillStyle = gameState.fillColor;
     gameState.ctx.fillRect(x, y, width, height);
   },
-  circle(x, y, radius) {
+  [${k("circle")}](x, y, radius) {
     if (!gameState.ctx) throw new Error("No window created");
     gameState.ctx.fillStyle = gameState.fillColor;
     gameState.ctx.beginPath();
     gameState.ctx.arc(x, y, radius, 0, Math.PI * 2);
     gameState.ctx.fill();
   },
-  clear() {
+  [${k("clear")}]() {
     if (!gameState.ctx) throw new Error("No window created");
     gameState.ctx.clearRect(0, 0, gameState.canvas.width, gameState.canvas.height);
   },
-  fillColor(color) { gameApplyFillColor(color); },
-  mainLoop(fn) {
+  [${k("fillColor")}](color) { gameApplyFillColor(color); },
+  [${k("mainLoop")}](fn) {
     async function frame() {
       await fn();
       requestAnimationFrame(frame);
@@ -329,7 +339,8 @@ function dialog(...args) {
 }`;
     },
 
-    http() {
+    http(memberMap) {
+      const k = (name) => memberKey(memberMap, name);
       return `
 const HTTP_METHODS = new Set(["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS"]);
 function isHttpMethod(value) {
@@ -374,7 +385,7 @@ function parseHttpResponseBody(text, contentType) {
   }
 }
 const http = {
-  async request(method, url, body, headers) {
+  async [${k("request")}](method, url, body, headers) {
     body = body ?? null;
     const init = {
       method: String(method || "GET").toUpperCase(),
@@ -399,9 +410,9 @@ const http = {
     const contentType = res.headers.get("content-type") || "";
     return parseHttpResponseBody(text, contentType);
   },
-  async response(a, b, c) {
+  async [${k("response")}](a, b, c) {
     const parsed = parseResponseArgs(a, b, c);
-    return this.request(parsed.method, parsed.url, null, parsed.headers);
+    return this[${k("request")}](parsed.method, parsed.url, null, parsed.headers);
   },
 };`;
     },
@@ -452,11 +463,12 @@ const ssr = {
 };`;
     },
 
-    htmlapp(target) {
+    htmlapp(target, memberMap) {
       const defaultHost =
         target === "html"
           ? '"#pup-htmlapp-host"'
           : '"#pup-htmlapp-host"';
+      const k = (name) => memberKey(memberMap, name);
       return `
 const HTMLAPP_HOST = ${defaultHost};
 function htmlappBuildExportDocument(html, title) {
@@ -519,46 +531,46 @@ function htmlappGetAttribute(el, property) {
   return el.getAttribute(name);
 }
 const htmlapp = {
-  render(html) {
+  [${k("render")}](html) {
     const host = htmlappResolveHost(null);
     if (!host) throw new Error("htmlapp.render: host not found");
     host.innerHTML = String(html);
     return host;
   },
-  setHtmlAttribute(selector, property, value) {
+  [${k("setHtmlAttribute")}](selector, property, value) {
     const el = htmlappResolveHost(selector);
     if (!el) throw new Error("htmlapp.setHtmlAttribute: element not found");
     htmlappSetAttribute(el, property, value);
     return el;
   },
-  setProperty(selector, property, value) {
-    return htmlapp.setHtmlAttribute(selector, property, value);
+  [${k("setProperty")}](selector, property, value) {
+    return htmlapp[${k("setHtmlAttribute")}](selector, property, value);
   },
-  getHtmlAttribute(selector, property) {
+  [${k("getHtmlAttribute")}](selector, property) {
     const el = htmlappResolveHost(selector);
     if (!el) throw new Error("htmlapp.getHtmlAttribute: element not found");
     return htmlappGetAttribute(el, property);
   },
-  getProperty(selector, property) {
-    return htmlapp.getHtmlAttribute(selector, property);
+  [${k("getProperty")}](selector, property) {
+    return htmlapp[${k("getHtmlAttribute")}](selector, property);
   },
-  mount(html, selector) {
+  [${k("mount")}](html, selector) {
     const host = htmlappResolveHost(selector);
     if (!host) throw new Error("htmlapp.mount: host not found");
     host.innerHTML = String(html);
     return host;
   },
-  clear(selector) {
+  [${k("clear")}](selector) {
     const host = htmlappResolveHost(selector);
     if (host) host.innerHTML = "";
   },
-  setTitle(title) {
+  [${k("setTitle")}](title) {
     document.title = String(title);
   },
-  export(html, title) {
+  [${k("export")}](html, title) {
     return htmlappBuildExportDocument(html, title);
   },
-  download(html, filename, title) {
+  [${k("download")}](html, filename, title) {
     const name = String(filename ?? "app.html");
     const doc = htmlappBuildExportDocument(html, title);
     const blob = new Blob([doc], { type: "text/html;charset=utf-8" });
@@ -591,76 +603,73 @@ const htmlapp = {
     },
   };
 
-  function buildApiObjectLines(modules, target) {
+  function buildApiObjectLines(modules, target, apiKeyMap, apiMemberMaps) {
+    const k = (name) => (apiKeyMap && apiKeyMap.get(name)) || name;
+    const gm = (name) =>
+      ((apiMemberMaps && apiMemberMaps.get("math")) || null) &&
+      apiMemberMaps.get("math").get(name)
+        ? apiMemberMaps.get("math").get(name)
+        : name;
     const lines = ["const pupApi = {"];
-    lines.push("  wait: pupWait,");
-    lines.push("  eval: pupEval,");
-    lines.push("  toString: pupToString,");
-    lines.push("  toNumber: pupToNumber,");
-    lines.push("  toBool: pupToBool,");
-    lines.push("  restart: pupRestart,");
+    lines.push("  " + k("wait") + ": pupWait,");
+    lines.push("  " + k("eval") + ": pupEval,");
+    lines.push("  " + k("toString") + ": pupToString,");
+    lines.push("  " + k("toNumber") + ": pupToNumber,");
+    lines.push("  " + k("toBool") + ": pupToBool,");
+    lines.push("  " + k("restart") + ": pupRestart,");
     if (modules.includes("vectors")) {
-      lines.push("  Vector2,");
-      lines.push("  Vector3,");
+      lines.push("  " + k("Vector2") + ": Vector2,");
+      lines.push("  " + k("Vector3") + ": Vector3,");
     }
     if (modules.includes("io")) {
-      lines.push("  isKeyDown,");
-      lines.push("  isKeyPressed,");
+      lines.push("  " + k("isKeyDown") + ": isKeyDown,");
+      lines.push("  " + k("isKeyPressed") + ": isKeyPressed,");
     }
     if (modules.includes("math")) {
-      lines.push("  math,");
-      lines.push("  random: math.random,");
-      lines.push("  round: math.round,");
-      lines.push("  floor: math.floor,");
-      lines.push("  ceil: math.ceil,");
+      lines.push("  " + k("math") + ": math,");
+      lines.push("  " + k("random") + ": math." + gm("random") + ",");
+      lines.push("  " + k("round") + ": math." + gm("round") + ",");
+      lines.push("  " + k("floor") + ": math." + gm("floor") + ",");
+      lines.push("  " + k("ceil") + ": math." + gm("ceil") + ",");
     }
     if (modules.includes("enums")) {
-      lines.push("  Enum: pupEnumType,");
-      lines.push("  createEnum,");
-      lines.push("  enums,");
+      lines.push("  " + k("Enum") + ": pupEnumType,");
+      lines.push("  " + k("createEnum") + ": createEnum,");
+      lines.push("  " + k("enums") + ": enums,");
     }
     if (modules.includes("game")) {
-      lines.push("  game,");
-      lines.push("  center,");
-      lines.push("  left,");
-      lines.push("  right,");
+      lines.push("  " + k("game") + ": game,");
+      lines.push("  " + k("center") + ": center,");
+      lines.push("  " + k("left") + ": left,");
+      lines.push("  " + k("right") + ": right,");
     }
     if (modules.includes("console")) {
-      lines.push("  print,");
-      lines.push("  ask,");
-      lines.push("  dialog,");
+      lines.push("  " + k("print") + ": print,");
+      lines.push("  " + k("ask") + ": ask,");
+      lines.push("  " + k("dialog") + ": dialog,");
     }
-    if (modules.includes("http")) lines.push("  http,");
-    if (modules.includes("utils")) lines.push("  utils,");
-    if (modules.includes("ssr")) lines.push("  ssr,");
-    if (modules.includes("htmlapp")) lines.push("  htmlapp,");
+    if (modules.includes("http")) lines.push("  " + k("http") + ": http,");
+    if (modules.includes("utils")) lines.push("  " + k("utils") + ": utils,");
+    if (modules.includes("ssr")) lines.push("  " + k("ssr") + ": ssr,");
+    if (modules.includes("htmlapp"))
+      lines.push("  " + k("htmlapp") + ": htmlapp,");
     lines.push("};");
     return lines.join("\n");
   }
 
-  function emitRuntime(modules, target) {
-    const order = [
-      "core",
-      "vectors",
-      "io",
-      "math",
-      "enums",
-      "game",
-      "console",
-      "http",
-      "utils",
-      "ssr",
-      "htmlapp",
-    ];
+  function emitRuntime(modules, target, apiKeyMap, apiMemberMaps) {
+    const memberMapFor = (name) =>
+      apiMemberMaps && apiMemberMaps.get ? apiMemberMaps.get(name) : null;
     const parts = ['"use strict";', ""];
     parts.push(chunks.core());
     if (modules.includes("vectors")) parts.push(chunks.vectors());
     if (modules.includes("io")) parts.push(chunks.io());
-    if (modules.includes("math")) parts.push(chunks.math());
+    if (modules.includes("math")) parts.push(chunks.math(memberMapFor("math")));
     if (modules.includes("enums")) parts.push(chunks.enums());
-    if (modules.includes("game")) parts.push(chunks.game(target));
+    if (modules.includes("game"))
+      parts.push(chunks.game(target, memberMapFor("game")));
     if (modules.includes("console")) parts.push(chunks.console(target));
-    if (modules.includes("http")) parts.push(chunks.http());
+    if (modules.includes("http")) parts.push(chunks.http(memberMapFor("http")));
     if (modules.includes("utils")) parts.push(chunks.utils());
     if (modules.includes("ssr")) {
       parts.push(
@@ -671,16 +680,16 @@ const htmlapp = {
       parts.push(
         target === "nodejs"
           ? chunks.htmlapp_node()
-          : chunks.htmlapp(target),
+          : chunks.htmlapp(target, memberMapFor("htmlapp")),
       );
     }
     parts.push("");
-    parts.push(buildApiObjectLines(modules, target));
+    parts.push(buildApiObjectLines(modules, target, apiKeyMap, apiMemberMaps));
     return parts.join("\n");
   }
 
-  function emitProgram(modules, transpiledBody, target) {
-    const runtime = emitRuntime(modules, target);
+  function emitProgram(modules, transpiledBody, target, apiKeyMap, apiMemberMaps) {
+    const runtime = emitRuntime(modules, target, apiKeyMap, apiMemberMaps);
     const footer =
       target === "nodejs"
         ? `
@@ -700,8 +709,8 @@ ${transpiledBody}
     return runtime + footer;
   }
 
-  function emitHtmlDocument(modules, scriptBody) {
-    const bundled = emitProgram(modules, scriptBody, "html");
+  function emitHtmlDocument(modules, scriptBody, apiKeyMap, apiMemberMaps) {
+    const bundled = emitProgram(modules, scriptBody, "html", apiKeyMap, apiMemberMaps);
     const antdHead = `
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/antd@5.26.2/dist/reset.css" />
   <script src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
