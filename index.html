@@ -3705,9 +3705,7 @@
           );
         }
         if (stmt.type === "reassign") {
-          const lhs = activeApiNames.has(stmt.name)
-            ? "pupApi." + stmt.name
-            : resolveIdentifier(stmt.name);
+          const lhs = resolveIdentifier(stmt.name);
           return lhs + " = " + transpileExpr(stmt.value) + ";";
         }
         if (stmt.type === "function") {
@@ -3934,9 +3932,11 @@
               : "include its module";
             throw new Error("unknown type " + node.name + " (" + hint + ")");
           }
+          const obfTypeKey =
+            apiKeyObfuscationMap && apiKeyObfuscationMap.get(node.name);
           return (
             "new pupApi." +
-            node.name +
+            (obfTypeKey || node.name) +
             "(" +
             node.args.map(transpileExpr).join(", ") +
             ")"
