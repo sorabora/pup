@@ -436,6 +436,77 @@ local player = new Vector2(10, 20)
               >
             </div>
           </div>
+          <div class="card doc-section-card" data-topic="html-templates">
+            <div class="card-body">
+              <h2 id="html-templates">html templates</h2>
+              <p>
+                Besides building markup by calling
+                <code>html.el(...)</code> piece by piece (see the
+                <a href="modules.html#html">html module</a>), you can write
+                HTML/XML literally as an expression — no quotes, no
+                concatenation. Just start a tag with <code>&lt;</code> and the
+                parser reads it as one template value, up to its matching
+                closing tag.
+              </p>
+              <p>
+                Drop a variable into the markup with
+                <code>{{ name }}</code>. It also accepts a dotted path like
+                <code>{{ card.value }}</code> — anything more than a bare
+                variable or property chain (no <code>{{ a + b }}</code>, no
+                calls, no loops or <code>if</code> inside the template) isn't
+                supported, so those still need a <code>local</code> computed
+                beforehand.
+              </p>
+              <pre class="example-editor">
+include console
+
+local name = "world"
+local page = &lt;div class="greeting"&gt;Hello, {{name}}!&lt;/div&gt;
+
+print(page)
+          </pre
+              >
+              <p>
+                A template can span multiple lines as long as it's one
+                balanced root element (tags opened inside it stay closed
+                before the outer tag ends). Because there's no loop construct
+                inside <code>{{ }}</code>, repeated markup (a hand of cards, a
+                list of players, ...) still goes through
+                <code>html.list(items, renderFn)</code> — build that piece as
+                its own string, then splice it into the template like any
+                other variable:
+              </p>
+              <pre class="example-editor">
+include console
+include html
+
+local hand = [
+  { suit: "hearts", value: "A" },
+  { suit: "spades", value: "K" }
+]
+
+function renderCard(card, i)
+  return &lt;div class="card"&gt;{{card.value}} of {{card.suit}}&lt;/div&gt;
+end
+
+local cardsHtml = html.list(hand, renderCard)
+local page = &lt;div class="hand"&gt;{{cardsHtml}}&lt;/div&gt;
+
+print(page)
+          </pre
+              >
+              <p>
+                <strong>Unlike <code>html.text()</code>, <code>{{ }}</code>
+                does not escape its value</strong>
+                — it drops the string straight into the markup. That's fine
+                for your own data (like the examples above), but if a value
+                might contain user input, escape it into a
+                <code>local</code> first with <code>html.text(...)</code> or
+                <code>html.escape(...)</code> and interpolate that instead,
+                since <code>{{ }}</code> can't call a function directly.
+              </p>
+            </div>
+          </div>
         </main>
       </div>
     </div>

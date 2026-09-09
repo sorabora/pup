@@ -567,6 +567,16 @@ print(facing)
                 yourself with <code>html.text</code>/<code>html.escape</code>
                 wherever it might contain user input.
               </p>
+              <p>
+                If you'd rather write markup literally than call
+                <code>el(...)</code> for every tag, see
+                <a href="documentation.html#html-templates"
+                  >html templates</a
+                >
+                — an inline <code>&lt;tag&gt;{{ }}&lt;/tag&gt;</code> syntax
+                that pairs naturally with <code>html.list</code> below for the
+                repeated parts.
+              </p>
               <ul>
                 <li>
                   <code>html.el(tag, attrs, children)</code> — builds one
